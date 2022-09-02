@@ -28,21 +28,29 @@ locals {
   }
 }
 
-resource aws_s3_bucket default_s3_origin {
+resource "aws_s3_bucket" "default_s3_origin" {
   count  = length(local.default_s3_origin)
   bucket = "${local.default_s3_origin[count.index]}-${lookup(local.environment_metadata, var.tag_environment).code}"
-  acl    = var.default_bucket_acl
   tags   = local.common_tags
 }
 
-resource aws_s3_bucket s3_origin {
+resource "aws_s3_bucket_acl" "default_s3_origin" {
+  acl    = var.default_bucket_acl
+  bucket = aws_s3_bucket.default_s3_origin.bucket
+}
+
+resource "aws_s3_bucket" "s3_origin" {
   count  = length(local.distributions)
   bucket = "${local.distributions[count.index].s3_origin}-${lookup(local.environment_metadata, var.tag_environment).code}"
-  acl    = var.default_bucket_acl
   tags   = local.common_tags
 }
 
-resource aws_s3_bucket_policy default_s3_origin {
+resource "aws_s3_bucket_acl" "s3_origin" {
+  acl    = var.default_bucket_acl
+  bucket = aws_s3_bucket.s3_origin.bucket
+}
+
+resource "aws_s3_bucket_policy" "default_s3_origin" {
   count  = length(local.default_s3_origin)
   bucket = aws_s3_bucket.default_s3_origin[count.index].id
   policy = <<EOF
@@ -68,7 +76,7 @@ resource aws_s3_bucket_policy default_s3_origin {
 EOF
 }
 
-resource aws_s3_bucket_policy s3_origin {
+resource "aws_s3_bucket_policy" "s3_origin" {
   count  = length(local.distributions)
   bucket = aws_s3_bucket.s3_origin[count.index].id
   policy = <<EOF
@@ -94,10 +102,7 @@ resource aws_s3_bucket_policy s3_origin {
 EOF
 }
 
-
-
-
-resource aws_cloudfront_distribution aws_frontend {
+resource "aws_cloudfront_distribution" "aws_frontend" {
   count = length(local.distributions)
 
   comment             = local.distributions[count.index].description == "" ? "Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name} proyecto ${var.tag_project_name}" : "${local.distributions[count.index].description} - Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name}"
@@ -105,7 +110,7 @@ resource aws_cloudfront_distribution aws_frontend {
   default_root_object = var.distribution_root_object
   aliases             = var.distribution_aliases
 
-  dynamic origin {
+  dynamic "origin" {
     for_each = local.default_s3_origin
     content {
       domain_name = aws_s3_bucket.default_s3_origin[0].bucket_regional_domain_name
@@ -118,7 +123,7 @@ resource aws_cloudfront_distribution aws_frontend {
     origin_id   = aws_s3_bucket.s3_origin[count.index].bucket
   }
 
-  dynamic origin {
+  dynamic "origin" {
     for_each = local.distributions[count.index].api_gateway_origins
     content {
       domain_name = origin.value.domain_name
@@ -146,7 +151,7 @@ resource aws_cloudfront_distribution aws_frontend {
     viewer_protocol_policy = var.s3_origin_viewer_protocol
   }
 
-  dynamic ordered_cache_behavior {
+  dynamic "ordered_cache_behavior" {
     for_each = local.distributions[count.index].behavior_patterns
     content {
       path_pattern     = ordered_cache_behavior.value
@@ -163,7 +168,7 @@ resource aws_cloudfront_distribution aws_frontend {
     }
   }
 
-  dynamic ordered_cache_behavior {
+  dynamic "ordered_cache_behavior" {
     for_each = local.distributions[count.index].api_gateway_origins
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
