@@ -34,22 +34,10 @@ resource "aws_s3_bucket" "default_s3_origin" {
   tags   = local.common_tags
 }
 
-resource "aws_s3_bucket_acl" "default_s3_origin" {
-  count  = length(local.default_s3_origin)
-  acl    = var.default_bucket_acl
-  bucket = aws_s3_bucket.default_s3_origin[count.index].bucket
-}
-
 resource "aws_s3_bucket" "s3_origin" {
   count  = length(local.distributions)
   bucket = "${local.distributions[count.index].s3_origin}-${lookup(local.environment_metadata, var.tag_environment).code}"
   tags   = local.common_tags
-}
-
-resource "aws_s3_bucket_acl" "s3_origin" {
-  count  = length(local.distributions)
-  acl    = var.default_bucket_acl
-  bucket = aws_s3_bucket.s3_origin[count.index].bucket
 }
 
 resource "aws_s3_bucket_policy" "default_s3_origin" {
@@ -73,7 +61,47 @@ resource "aws_s3_bucket_policy" "default_s3_origin" {
       },
     ]
   })
+  depends_on = [aws_s3_bucket_public_access_block.default_s3_origin]
 }
+
+resource "aws_s3_bucket_public_access_block" "default_s3_origin" {
+  count  = length(local.default_s3_origin)
+  bucket = aws_s3_bucket.default_s3_origin[count.index].id
+
+  block_public_acls       = true
+  block_public_policy     = false
+  ignore_public_acls      = true
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_public_access_block" "s3_origin" {
+  count  = length(local.distributions)
+  bucket = aws_s3_bucket.s3_origin[count.index].id
+
+  block_public_acls       = true
+  block_public_policy     = false
+  ignore_public_acls      = true
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_ownership_controls" "s3_default_origin" {
+  count  = length(local.default_s3_origin)
+  bucket = aws_s3_bucket.default_s3_origin[count.index].id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+  depends_on = [aws_s3_bucket_public_access_block.default_s3_origin]
+}
+
+resource "aws_s3_bucket_ownership_controls" "s3_origin" {
+  count  = length(local.distributions)
+  bucket = aws_s3_bucket.s3_origin[count.index].id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+  depends_on = [aws_s3_bucket_public_access_block.s3_origin]
+}
+
 
 resource "aws_s3_bucket_policy" "s3_origin" {
   count  = length(local.distributions)
@@ -96,6 +124,7 @@ resource "aws_s3_bucket_policy" "s3_origin" {
       },
     ]
   })
+  depends_on = [aws_s3_bucket_public_access_block.s3_origin]
 }
 
 resource "aws_cloudfront_distribution" "aws_frontend" {

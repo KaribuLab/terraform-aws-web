@@ -58,7 +58,7 @@ variable "frontend_distribution" {
 
 variable default_bucket_acl {
   type    = string
-  default = "private"
+  default = "public-read"
 }
 
 ## Distribución CloudFront
