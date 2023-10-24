@@ -48,7 +48,9 @@ resource "aws_s3_bucket_policy" "default_s3_origin" {
     Statement = [
       {
         Sid = "${uuid()}"
-        Principal = "*"
+        Principal = {
+          AWS = "*"
+        }
         Action = [
           "s3:ListBucket",
           "s3:GetObject",
@@ -68,9 +70,9 @@ resource "aws_s3_bucket_public_access_block" "default_s3_origin" {
   count  = length(local.default_s3_origin)
   bucket = aws_s3_bucket.default_s3_origin[count.index].id
 
-  block_public_acls       = true
+  block_public_acls       = false
   block_public_policy     = false
-  ignore_public_acls      = true
+  ignore_public_acls      = false
   restrict_public_buckets = false
 }
 
@@ -88,7 +90,7 @@ resource "aws_s3_bucket_ownership_controls" "s3_default_origin" {
   count  = length(local.default_s3_origin)
   bucket = aws_s3_bucket.default_s3_origin[count.index].id
   rule {
-    object_ownership = "BucketOwnerPreferred"
+    object_ownership = "ObjectWriter"
   }
   depends_on = [aws_s3_bucket_public_access_block.default_s3_origin]
 }
@@ -97,7 +99,7 @@ resource "aws_s3_bucket_ownership_controls" "s3_origin" {
   count  = length(local.distributions)
   bucket = aws_s3_bucket.s3_origin[count.index].id
   rule {
-    object_ownership = "BucketOwnerPreferred"
+    object_ownership = "ObjectWriter"
   }
   depends_on = [aws_s3_bucket_public_access_block.s3_origin]
 }
@@ -111,7 +113,9 @@ resource "aws_s3_bucket_policy" "s3_origin" {
     Statement = [
       {
         Sid = "${uuid()}"
-        Principal = "*"
+        Principal = {
+          AWS = "*"
+        }
         Action = [
           "s3:ListBucket",
           "s3:GetObject",

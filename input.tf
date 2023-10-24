@@ -53,14 +53,6 @@ variable "frontend_distribution" {
 ## Variables Opcionales
 ## ===================================================
 
-## Bucket S3
-## ---------------------------------------------------
-
-variable default_bucket_acl {
-  type    = string
-  default = "public-read"
-}
-
 ## Distribución CloudFront
 ## ---------------------------------------------------
 
