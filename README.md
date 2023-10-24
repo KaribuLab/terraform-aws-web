@@ -10,8 +10,10 @@
 | tag_customer_name     | string       | Nombre del cliente                                                                                                                                                  | Si        |
 | tag_team_name         | string       | Nombre del equipo asociado al proyecto                                                                                                                              | Si        |
 | tag_environment       | string       | Ambiente asociado a los recursos                                                                                                                                    | Si        |
-| frontend_distribution | list(object) | Lista de distribuciones que deberán ser creadas, buckets CDN y APIs que deberán ser incluidas                                                                       | Si        |
+| frontend_distribution | list(object) | Lista de distribuciones que deberán ser creadas, buckets CDN y APIs que deberán ser incluidas                                                                       | No        |
 | default_s3_origin     | string       | Nombre del bucket de S3 usado como origen por defecto, en caso de no usarse se tomarán los valores de [`s3_origin`](#frontend_distribution) como origen por defecto | No        |
+
+> NOTA: Debe existir al menos `frontend_distribution`, si no hay `default_s3_origin`
 
 #### frontend_distribution
 

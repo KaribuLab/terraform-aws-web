@@ -35,8 +35,9 @@ resource "aws_s3_bucket" "default_s3_origin" {
 }
 
 resource "aws_s3_bucket_acl" "default_s3_origin" {
+  count  = length(local.default_s3_origin)
   acl    = var.default_bucket_acl
-  bucket = aws_s3_bucket.default_s3_origin.bucket
+  bucket = aws_s3_bucket.default_s3_origin[count.index].bucket
 }
 
 resource "aws_s3_bucket" "s3_origin" {
@@ -46,66 +47,61 @@ resource "aws_s3_bucket" "s3_origin" {
 }
 
 resource "aws_s3_bucket_acl" "s3_origin" {
+  count  = length(local.distributions)
   acl    = var.default_bucket_acl
-  bucket = aws_s3_bucket.s3_origin.bucket
+  bucket = aws_s3_bucket.s3_origin[count.index].bucket
 }
 
 resource "aws_s3_bucket_policy" "default_s3_origin" {
   count  = length(local.default_s3_origin)
   bucket = aws_s3_bucket.default_s3_origin[count.index].id
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Id": "s3-${local.default_s3_origin[count.index]}-policy-${lookup(local.environment_metadata, var.tag_environment).code}",
-  "Statement": [
-    {
-      "Sid": "CloudFrontAllow",
-      "Effect": "Allow",
-      "Principal": {"AWS":"*"},
-      "Action": [
-        "s3:ListBucket",
-        "s3:GetObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::${aws_s3_bucket.default_s3_origin[count.index].bucket}/*",
-        "arn:aws:s3:::${aws_s3_bucket.default_s3_origin[count.index].bucket}"
-      ]
-    }
-  ]
-}
-EOF
+  policy =  jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid = "${uuid()}"
+        Principal = "*"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetObject",
+        ]
+        Effect   = "Allow"
+        Resource = [
+          "arn:aws:s3:::${aws_s3_bucket.default_s3_origin[count.index].bucket}/*",
+          "arn:aws:s3:::${aws_s3_bucket.default_s3_origin[count.index].bucket}"
+        ]
+      },
+    ]
+  })
 }
 
 resource "aws_s3_bucket_policy" "s3_origin" {
   count  = length(local.distributions)
   bucket = aws_s3_bucket.s3_origin[count.index].id
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Id": "s3-${local.distributions[count.index].s3_origin}-policy-${lookup(local.environment_metadata, var.tag_environment).code}",
-  "Statement": [
-    {
-      "Sid": "CloudFrontAllow",
-      "Effect": "Allow",
-      "Principal": {"AWS":"*"},
-      "Action": [
-        "s3:ListBucket",
-        "s3:GetObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::${aws_s3_bucket.s3_origin[count.index].bucket}/*",
-        "arn:aws:s3:::${aws_s3_bucket.s3_origin[count.index].bucket}"
-      ]
-    }
-  ]
-}
-EOF
+  policy =  jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid = "${uuid()}"
+        Principal = "*"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetObject",
+        ]
+        Effect   = "Allow"
+        Resource = [
+          "arn:aws:s3:::${aws_s3_bucket.s3_origin[count.index].bucket}/*",
+          "arn:aws:s3:::${aws_s3_bucket.s3_origin[count.index].bucket}"
+        ]
+      },
+    ]
+  })
 }
 
 resource "aws_cloudfront_distribution" "aws_frontend" {
-  count = length(local.distributions)
+  count = length(local.distributions) == 0 ? 1 : length(local.distributions)
 
-  comment             = local.distributions[count.index].description == "" ? "Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name} proyecto ${var.tag_project_name}" : "${local.distributions[count.index].description} - Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name}"
+  comment             = length(local.distributions) > 0 ? (local.distributions[count.index].description == "" ? "Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name} proyecto ${var.tag_project_name}" : "${local.distributions[count.index].description} - Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name}") : "${var.default_s3_origin} - Ambiente de ${lookup(local.environment_metadata, var.tag_environment).name}"
   enabled             = var.distribution_enabled
   default_root_object = var.distribution_root_object
   aliases             = var.distribution_aliases
@@ -118,13 +114,16 @@ resource "aws_cloudfront_distribution" "aws_frontend" {
     }
   }
 
-  origin {
-    domain_name = aws_s3_bucket.s3_origin[count.index].bucket_regional_domain_name
-    origin_id   = aws_s3_bucket.s3_origin[count.index].bucket
+  dynamic "origin" {
+    for_each    = aws_s3_bucket.s3_origin
+    content {
+      domain_name = origin.value.bucket_regional_domain_name
+      origin_id   = origin.value.bucket
+    }
   }
 
   dynamic "origin" {
-    for_each = local.distributions[count.index].api_gateway_origins
+    for_each = length(local.distributions) > 0 ? local.distributions[count.index].api_gateway_origins : []
     content {
       domain_name = origin.value.domain_name
       origin_id   = "${origin.value.origin_id}-${lookup(local.environment_metadata, var.tag_environment).code}"
@@ -152,7 +151,7 @@ resource "aws_cloudfront_distribution" "aws_frontend" {
   }
 
   dynamic "ordered_cache_behavior" {
-    for_each = local.distributions[count.index].behavior_patterns
+    for_each = length(local.distributions) > 0 ? local.distributions[count.index].behavior_patterns : []
     content {
       path_pattern     = ordered_cache_behavior.value
       allowed_methods  = var.s3_origin_allowed_methods
@@ -169,7 +168,7 @@ resource "aws_cloudfront_distribution" "aws_frontend" {
   }
 
   dynamic "ordered_cache_behavior" {
-    for_each = local.distributions[count.index].api_gateway_origins
+    for_each = length(local.distributions) > 0 ? local.distributions[count.index].api_gateway_origins: []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = var.api_gateway_origin_allowed_methods

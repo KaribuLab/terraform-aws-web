@@ -1,0 +1,5 @@
+.env
+terraform.tfvars
+provider.tf
+.terraform.lock.hcl
+.terraform
