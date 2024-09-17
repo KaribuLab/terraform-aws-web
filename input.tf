@@ -5,48 +5,28 @@
 ## Tags AWS
 ## ---------------------------------------------------
 
-variable "tag_project_name" {
-  type        = string
-  description = "Nombre del proyecto"
-}
-
-variable "tag_customer_name" {
-  type        = string
-  description = "Nombre del cliente"
-}
-
-variable "tag_team_name" {
-  type        = string
-  description = "Nombre del equipo"
-}
-
-variable "tag_environment" {
-  type        = string
-  description = "Nombre del ambiente"
+variable "common_tags" {
+  type        = map(string)
+  description = "Tags to be applied to all resources."
 }
 
 ## Distribución CloudFront
 ## ---------------------------------------------------
 
-variable "default_s3_origin" {
-  type    = string
-  default = ""
-}
-
-variable "frontend_distribution" {
-  type = list(object({
+variable "distribution" {
+  type = object({
     s3_origin         = string
-    behavior_patterns = list(string)
     description       = string
-    api_gateway_origins = list(object({
+    behavior_patterns = optional(list(string))
+    api_gateway_origins = optional(list(object({
+      origin_path  = string
       domain_name  = string
       origin_id    = string
       path_pattern = string
       headers      = list(string)
       cookies      = list(string)
-    }))
-  }))
-  default = []
+    })))
+  })
 }
 
 ## ===================================================
@@ -56,32 +36,32 @@ variable "frontend_distribution" {
 ## Distribución CloudFront
 ## ---------------------------------------------------
 
-variable distribution_enabled {
+variable "distribution_enabled" {
   type    = bool
   default = true
 }
 
-variable distribution_root_object {
+variable "distribution_root_object" {
   type    = string
-  default = "/index.html"
+  default = "index.html"
 }
 
-variable distribution_aliases {
-  type    = list
+variable "distribution_aliases" {
+  type    = list(any)
   default = []
 }
 
-variable distribution_price_class {
+variable "distribution_price_class" {
   type    = string
   default = "PriceClass_200"
 }
 
-variable distribution_restriction {
+variable "distribution_restriction" {
   type    = string
   default = "none"
 }
 
-variable distribution_certificate {
+variable "distribution_certificate" {
   type    = bool
   default = true
 }
@@ -132,37 +112,27 @@ variable "api_gateway_origin_query_string" {
 ## Cache Behavior
 ## ---------------------------------------------------
 
-variable s3_origin_allowed_methods {
-  type    = list
+variable "s3_origin_allowed_methods" {
+  type    = list(any)
   default = ["GET", "HEAD"]
 }
 
-variable s3_origin_cached_methods {
-  type    = list
+variable "s3_origin_cached_methods" {
+  type    = list(any)
   default = ["GET", "HEAD"]
 }
 
-variable s3_origin_query_string {
+variable "s3_origin_query_string" {
   type    = bool
   default = false
 }
 
-variable "s3_origin_not_found_code" {
-  type    = number
-  default = 404
-}
-
-variable "s3_origin_ok_code" {
-  type    = number
-  default = 200
-}
-
-variable s3_origin_cookies {
+variable "s3_origin_cookies" {
   type    = string
   default = "none"
 }
 
-variable s3_origin_viewer_protocol {
+variable "s3_origin_viewer_protocol" {
   type    = string
   default = "redirect-to-https"
 }
