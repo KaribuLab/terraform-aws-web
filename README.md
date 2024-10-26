@@ -16,7 +16,23 @@
 | s3_orign                                    | string                 | Origen usado como CDN u Origen por defecto de la distribución                                                             | Si        |
 | description                                 | string                 | Descripción de la distribución                                                                                            | Si        |
 | behavior_patterns                           | optional(list(string)) | Patrones usados en el caso de que se use `s3_origin` como CDN                                                             | No        |
+| [lambda_association](#lambda_association)   | optional(list(object)) | Configuración para asociar funciones lambdas a un cache behaviour                                                         | No        |
 | [api_gateway_origins](#api_gateway_origins) | optional(list(object)) | Objeto que contiene los parámetros usados para asociar recursos de API Gateway como *"Cache Behavior"* de la distribución | No        |
+
+#### lambda_association
+
+| Campo                  | Tipo                   | Descripción                                                                               | Requerido |
+| ---------------------- | ---------------------- | ----------------------------------------------------------------------------------------- | --------- |
+| path_pattern           | string                 | Path pattern asociado al cache behaviour                                                  | Si        |
+| allowed_methods        | list(string)           | Métodos HTTP permitidos                                                                   | Si        |
+| cached_methods         | list(string)           | Métodos HTTP para caching                                                                 | Si        |
+| query_string           | bool                   | Habilita query string                                                                     | Si        |
+| headers                | list(string)           | Headers soportados que serán propagados                                                   | Si        |
+| event_type             | string                 | Tipo de evento (`viewer-request`, `viewer-reponse`, `origin-request` y `origin-response`) | Si        |
+| lambda_arn             | string                 | ARN de la función lambda                                                                  | Si        |
+| lambda_version         | string                 | Versión de la función lambda                                                              | Si        |
+| viewer_protocol_policy | string                 | Pólitica de las peticiones que llegan al viewer (`redirect-to-https`)                     | Si        |
+| cookies                | optional(list(string)) | Lista de cookies que se propagarán                                                        | No        |
 
 #### api_gateway_origins
 

@@ -15,8 +15,20 @@ variable "common_tags" {
 
 variable "distribution" {
   type = object({
-    s3_origin         = string
-    description       = string
+    s3_origin   = string
+    description = string
+    lambda_association = optional(list(object({
+      path_pattern           = string
+      allowed_methods        = list(string)
+      cached_methods         = list(string)
+      query_string           = bool
+      headers                = list(string)
+      event_type             = string
+      lambda_arn             = string
+      lambda_version         = string
+      viewer_protocol_policy = string
+      cookies                = optional(list(string))
+    })))
     behavior_patterns = optional(list(string))
     api_gateway_origins = optional(list(object({
       origin_path  = string
@@ -27,6 +39,16 @@ variable "distribution" {
       cookies      = list(string)
     })))
   })
+}
+
+variable "origin_custom_headers" {
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default     = []
+  description = "Custom headers to be added to the origin request."
+
 }
 
 ## ===================================================

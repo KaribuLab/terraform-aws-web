@@ -31,6 +31,14 @@ resource "aws_cloudfront_distribution" "distribution" {
     domain_name              = aws_s3_bucket.s3_origin.bucket_regional_domain_name
     origin_id                = aws_s3_bucket.s3_origin.bucket
     origin_access_control_id = aws_cloudfront_origin_access_control.s3_origin.id
+    dynamic "custom_header" {
+      for_each = var.origin_custom_headers
+      content {
+        name  = custom_header.value.name
+        value = custom_header.value.value
+      }
+
+    }
   }
 
   dynamic "origin" {
@@ -75,6 +83,29 @@ resource "aws_cloudfront_distribution" "distribution" {
         }
       }
       viewer_protocol_policy = var.s3_origin_viewer_protocol
+    }
+  }
+
+  dynamic "ordered_cache_behavior" {
+    for_each = var.distribution.lambda_association != null ? var.distribution.lambda_association : []
+    content {
+      path_pattern     = ordered_cache_behavior.value.path_pattern
+      allowed_methods  = ordered_cache_behavior.value.allowed_methods
+      cached_methods   = ordered_cache_behavior.value.cached_methods
+      target_origin_id = aws_s3_bucket.s3_origin.bucket
+      forwarded_values {
+        query_string = ordered_cache_behavior.value.query_string
+        headers      = ordered_cache_behavior.value.headers
+        cookies {
+          forward           = ordered_cache_behavior.value.cookies != null ? "whitelist" : "none"
+          whitelisted_names = ordered_cache_behavior.value.cookies
+        }
+      }
+      lambda_function_association {
+        event_type = ordered_cache_behavior.value.event_type
+        lambda_arn = "${ordered_cache_behavior.value.lambda_arn}:${ordered_cache_behavior.value.lambda_version}"
+      }
+      viewer_protocol_policy = ordered_cache_behavior.value.viewer_protocol_policy
     }
   }
 
