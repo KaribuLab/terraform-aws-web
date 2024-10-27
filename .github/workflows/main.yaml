@@ -63,13 +63,13 @@ jobs:
         run: |
           chmod +x kli
           ./kli semver -t
-      # - name: Slack Notification
-      #   uses: rtCamp/action-slack-notify@v2
-      #   env:
-      #     SLACK_CHANNEL: karibu-labs-it
-      #     SLACK_COLOR: ${{ job.status }}
-      #     SLACK_ICON: https://img.icons8.com/ios-filled/50/github.png
-      #     SLACK_MESSAGE: "New version of Terragrunt Deploy for node-20 https://hub.docker.com/repository/docker/karibu/terragrunt-deploy/general :rocket:"
-      #     SLACK_TITLE: New image version of Terragrunt Deploy for node-20
-      #     SLACK_USERNAME: github-actions
-      #     SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      - name: Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_CHANNEL: karibu-labs-it
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_ICON: https://img.icons8.com/ios-filled/50/github.png
+          SLACK_MESSAGE: "New version of Terragrunt Deploy for node-20 https://hub.docker.com/repository/docker/karibu/terragrunt-deploy/general :rocket:"
+          SLACK_TITLE: New image version of Terragrunt Deploy for node-20
+          SLACK_USERNAME: github-actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
