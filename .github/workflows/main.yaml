@@ -19,7 +19,7 @@ jobs:
       - name: Download kli
         id: download_kli
         run: |
-          curl -sL https://github.com/KaribuLab/kli/releases/download/v0.2.2/kli  --output kli
+          curl -sL https://github.com/KaribuLab/kli/releases/download/v0.3.0/kli  --output kli
       - name: Check tag
         id: check_tag
         run: |
@@ -62,4 +62,14 @@ jobs:
         id: create_tag
         run: |
           chmod +x kli
-          ./kli semver -tv
+          ./kli semver -t
+      # - name: Slack Notification
+      #   uses: rtCamp/action-slack-notify@v2
+      #   env:
+      #     SLACK_CHANNEL: karibu-labs-it
+      #     SLACK_COLOR: ${{ job.status }}
+      #     SLACK_ICON: https://img.icons8.com/ios-filled/50/github.png
+      #     SLACK_MESSAGE: "New version of Terragrunt Deploy for node-20 https://hub.docker.com/repository/docker/karibu/terragrunt-deploy/general :rocket:"
+      #     SLACK_TITLE: New image version of Terragrunt Deploy for node-20
+      #     SLACK_USERNAME: github-actions
+      #     SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
