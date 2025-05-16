@@ -1,10 +1,10 @@
 resource "aws_s3_bucket" "s3_origin" {
-  bucket = var.distribution.s3_origin
+  bucket = var.distribution.s3_origin.bucket_name
   tags   = var.common_tags
 }
 
 resource "aws_cloudfront_origin_access_control" "s3_origin" {
-  name                              = "${var.distribution.s3_origin}-oac"
+  name                              = "${var.distribution.s3_origin.bucket_name}-oac"
   description                       = var.distribution.description
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
@@ -23,21 +23,38 @@ resource "aws_s3_bucket_public_access_block" "s3_origin" {
 resource "aws_cloudfront_distribution" "distribution" {
 
   comment             = var.distribution.description
-  enabled             = var.distribution_enabled
-  default_root_object = var.distribution_root_object
-  aliases             = var.distribution_aliases
+  enabled             = try(var.distribution.cloudfront_settings.enabled, var.distribution_enabled)
+  default_root_object = try(var.distribution.cloudfront_settings.root_object, var.distribution_root_object)
+  aliases             = try(var.distribution.cloudfront_settings.aliases, var.distribution_aliases)
 
-  origin {
-    domain_name              = aws_s3_bucket.s3_origin.bucket_regional_domain_name
-    origin_id                = aws_s3_bucket.s3_origin.bucket
-    origin_access_control_id = aws_cloudfront_origin_access_control.s3_origin.id
-    dynamic "custom_header" {
-      for_each = var.origin_custom_headers
-      content {
-        name  = custom_header.value.name
-        value = custom_header.value.value
+  dynamic "origin" {
+    for_each = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? [1] : []
+    content {
+      domain_name              = aws_s3_bucket.s3_origin.bucket_regional_domain_name
+      origin_id                = aws_s3_bucket.s3_origin.bucket
+      origin_access_control_id = aws_cloudfront_origin_access_control.s3_origin.id
+      dynamic "custom_header" {
+        for_each = var.origin_custom_headers
+        content {
+          name  = custom_header.value.name
+          value = custom_header.value.value
+        }
       }
+    }
+  }
 
+  dynamic "origin" {
+    for_each = var.distribution.alb_origin != null && var.distribution.alb_origin.enabled ? [var.distribution.alb_origin] : []
+    content {
+      domain_name = origin.value.domain_name
+      origin_id   = origin.value.origin_id
+      origin_path = origin.value.origin_path
+      custom_origin_config {
+        http_port              = try(origin.value.origin_config.http_port, var.alb_origin_http_port)
+        https_port             = try(origin.value.origin_config.https_port, var.alb_origin_https_port)
+        origin_protocol_policy = try(origin.value.origin_config.protocol, var.alb_origin_protocol)
+        origin_ssl_protocols   = try(origin.value.origin_config.ssl_protocols, var.alb_origin_ssl_protocols)
+      }
     }
   }
 
@@ -48,41 +65,63 @@ resource "aws_cloudfront_distribution" "distribution" {
       origin_id   = origin.value.origin_id
       origin_path = origin.value.origin_path
       custom_origin_config {
-        http_port              = var.api_gateway_origin_http_port
-        https_port             = var.api_gateway_origin_https_port
-        origin_protocol_policy = var.api_gateway_origin_protocol
-        origin_ssl_protocols   = var.api_gateway_origin_ssl_protocols
+        http_port              = try(origin.value.origin_config.http_port, var.api_gateway_origin_http_port)
+        https_port             = try(origin.value.origin_config.https_port, var.api_gateway_origin_https_port)
+        origin_protocol_policy = try(origin.value.origin_config.protocol, var.api_gateway_origin_protocol)
+        origin_ssl_protocols   = try(origin.value.origin_config.ssl_protocols, var.api_gateway_origin_ssl_protocols)
       }
     }
   }
 
   default_cache_behavior {
-    allowed_methods  = var.s3_origin_allowed_methods
-    cached_methods   = var.s3_origin_cached_methods
-    target_origin_id = aws_s3_bucket.s3_origin.bucket
+    allowed_methods  = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.allowed_methods, var.s3_origin_allowed_methods) : try(var.distribution.alb_origin.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
+    cached_methods   = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cached_methods, var.s3_origin_cached_methods) : try(var.distribution.alb_origin.cache_behavior.cached_methods, var.alb_origin_cached_methods)
+    target_origin_id = var.distribution.primary_origin_type == "s3" ? aws_s3_bucket.s3_origin.bucket : var.distribution.alb_origin.origin_id
+    
     forwarded_values {
-      query_string = var.s3_origin_query_string
+      query_string = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string) : try(var.distribution.alb_origin.cache_behavior.query_string, var.alb_origin_query_string)
+      headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
+      
       cookies {
-        forward = var.s3_origin_cookies
+        forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
       }
     }
-    viewer_protocol_policy = var.s3_origin_viewer_protocol
+    
+    viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
   }
 
   dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.behavior_patterns != null ? var.distribution.behavior_patterns : []
+    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? [var.distribution.s3_origin] : []
     content {
-      path_pattern     = ordered_cache_behavior.value
-      allowed_methods  = var.s3_origin_allowed_methods
-      cached_methods   = var.s3_origin_cached_methods
+      path_pattern     = ordered_cache_behavior.value.path_pattern
+      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
+      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
       target_origin_id = aws_s3_bucket.s3_origin.bucket
       forwarded_values {
-        query_string = var.s3_origin_query_string
+        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
         cookies {
-          forward = var.s3_origin_cookies
+          forward = try(ordered_cache_behavior.value.cache_behavior.cookies, var.s3_origin_cookies)
         }
       }
-      viewer_protocol_policy = var.s3_origin_viewer_protocol
+      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol)
+    }
+  }
+
+  dynamic "ordered_cache_behavior" {
+    for_each = var.distribution.primary_origin_type == "s3" && var.distribution.alb_origin != null && var.distribution.alb_origin.enabled ? [var.distribution.alb_origin] : []
+    content {
+      path_pattern     = ordered_cache_behavior.value.path_pattern
+      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
+      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.alb_origin_cached_methods)
+      target_origin_id = ordered_cache_behavior.value.origin_id
+      forwarded_values {
+        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.alb_origin_query_string)
+        headers      = ["*"]
+        cookies {
+          forward = "all"
+        }
+      }
+      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
     }
   }
 
@@ -113,31 +152,33 @@ resource "aws_cloudfront_distribution" "distribution" {
     for_each = var.distribution.api_gateway_origins != null ? var.distribution.api_gateway_origins : []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = var.api_gateway_origin_allowed_methods
-      cached_methods   = var.api_gateway_origin_cached_methods
+      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.api_gateway_origin_allowed_methods)
+      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.api_gateway_origin_cached_methods)
       target_origin_id = ordered_cache_behavior.value.origin_id
       forwarded_values {
-        query_string = var.api_gateway_origin_query_string
+        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.api_gateway_origin_query_string)
         headers      = ordered_cache_behavior.value.headers
         cookies {
           forward           = length(ordered_cache_behavior.value.cookies) > 0 ? "whitelist" : "none"
           whitelisted_names = ordered_cache_behavior.value.cookies
         }
       }
-      viewer_protocol_policy = var.api_gateway_origin_viewer_protocol
+      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.api_gateway_origin_viewer_protocol)
     }
   }
 
-  price_class = var.distribution_price_class
+  price_class = try(var.distribution.cloudfront_settings.price_class, var.distribution_price_class)
 
   restrictions {
     geo_restriction {
-      restriction_type = var.distribution_restriction
+      restriction_type = try(var.distribution.cloudfront_settings.restriction, var.distribution_restriction)
     }
   }
+  
   viewer_certificate {
-    cloudfront_default_certificate = var.distribution_certificate
+    cloudfront_default_certificate = try(var.distribution.cloudfront_settings.certificate, var.distribution_certificate)
   }
+  
   tags = var.common_tags
 }
 

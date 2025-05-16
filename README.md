@@ -97,3 +97,117 @@ terraform apply
 > En el último paso deberá confirmar si desea aplicar los cambios
 
 Para destruir la infraestructura creada ejecute el comando `terraform destroy` y por último apruebe la ejecución.
+
+## Configuración de orígenes
+
+Este módulo permite configurar varios tipos de orígenes para tu distribución CloudFront con toda la configuración concentrada en un solo objeto:
+
+### Estructura de configuración mejorada
+
+La nueva estructura concentra toda la configuración en el objeto `distribution`:
+
+```hcl
+distribution = {
+  # Configuración general
+  description        = "Mi distribución CloudFront"
+  primary_origin_type = "alb"    # "s3" o "alb"
+  enabled            = true
+  root_object        = "index.html"
+  aliases            = ["www.midominio.com"]
+  price_class        = "PriceClass_200"
+  restriction        = "none"
+  certificate        = true
+  
+  # Configuración del origen S3
+  s3_origin = {
+    # Propiedades básicas
+    bucket_name  = "mi-bucket-origen"
+    path_pattern = "/static/*"
+    enabled      = true
+    
+    # Comportamiento de caché
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods  = ["GET", "HEAD"]
+    query_string    = false
+    cookies         = "none"
+    viewer_protocol = "redirect-to-https"
+  }
+  
+  # Configuración del origen ALB
+  alb_origin = {
+    # Propiedades básicas
+    domain_name = "mi-alb.us-east-1.elb.amazonaws.com"
+    origin_id   = "mi-alb-origen"
+    origin_path = ""
+    path_pattern = "/api/*"
+    enabled     = true
+    
+    # Configuración de origen personalizado
+    http_port     = 80
+    https_port    = 443
+    protocol      = "https-only"
+    ssl_protocols = ["TLSv1.2"]
+    
+    # Comportamiento de caché
+    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods  = ["GET", "HEAD"]
+    viewer_protocol = "https-only"
+    query_string    = true
+  }
+}
+```
+
+### Caso 1: S3 como origen primario
+
+Si deseas que S3 sea el origen predeterminado:
+
+```hcl
+distribution = {
+  description        = "Mi distribución"
+  primary_origin_type = "s3"
+  
+  s3_origin = {
+    bucket_name = "mi-bucket-origen"
+    enabled     = true
+    
+    # Configuración específica de S3
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods  = ["GET", "HEAD"]
+    viewer_protocol = "redirect-to-https"
+  }
+  
+  alb_origin = {
+    domain_name  = "mi-alb.us-east-1.elb.amazonaws.com"
+    origin_id    = "mi-alb-origen"
+    path_pattern = "/api/*"
+    enabled      = true
+  }
+}
+```
+
+### Caso 2: ALB como origen primario
+
+Si deseas que el ALB sea el origen predeterminado:
+
+```hcl
+distribution = {
+  description        = "Mi distribución"
+  primary_origin_type = "alb"
+  
+  alb_origin = {
+    domain_name = "mi-alb.us-east-1.elb.amazonaws.com"
+    origin_id   = "mi-alb-origen"
+    enabled     = true
+    
+    # Configuración específica del ALB
+    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods  = ["GET", "HEAD"]
+    viewer_protocol = "https-only"
+  }
+  
+  s3_origin = {
+    bucket_name  = "mi-bucket-origen"
+    path_pattern = "/static/*"
+    enabled      = true
+  }
+}
