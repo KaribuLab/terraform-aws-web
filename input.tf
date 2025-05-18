@@ -110,8 +110,8 @@ variable "distribution" {
   })
   validation {
     condition = (
-      var.distribution.primary_origin_type == "s3" && var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ||
-      var.distribution.primary_origin_type == "alb" && var.distribution.alb_origin != null && var.distribution.alb_origin.enabled
+      (var.distribution.primary_origin_type == "s3" && var.distribution.s3_origin != null && try(var.distribution.s3_origin.enabled, false)) ||
+      (var.distribution.primary_origin_type == "alb" && var.distribution.alb_origin != null && try(var.distribution.alb_origin.enabled, false))
     )
     error_message = "Debe proporcionar una configuración válida para el origen primario. Si primary_origin_type es 's3', debe proporcionar s3_origin. Si primary_origin_type es 'alb', debe proporcionar alb_origin."
   }
