@@ -1,9 +1,11 @@
 resource "aws_s3_bucket" "s3_origin" {
+  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
   bucket = var.distribution.s3_origin.bucket_name
   tags   = var.common_tags
 }
 
 resource "aws_cloudfront_origin_access_control" "s3_origin" {
+  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
   name                              = "${var.distribution.s3_origin.bucket_name}-oac"
   description                       = var.distribution.description
   origin_access_control_origin_type = "s3"
@@ -12,6 +14,7 @@ resource "aws_cloudfront_origin_access_control" "s3_origin" {
 }
 
 resource "aws_s3_bucket_public_access_block" "s3_origin" {
+  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
   bucket = aws_s3_bucket.s3_origin.id
 
   block_public_acls       = true
@@ -21,7 +24,7 @@ resource "aws_s3_bucket_public_access_block" "s3_origin" {
 }
 
 resource "aws_cloudfront_distribution" "distribution" {
-
+  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
   comment             = var.distribution.description
   enabled             = try(var.distribution.cloudfront_settings.enabled, var.distribution_enabled)
   default_root_object = try(var.distribution.cloudfront_settings.root_object, var.distribution_root_object)
