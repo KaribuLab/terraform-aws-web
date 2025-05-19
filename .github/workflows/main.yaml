@@ -68,7 +68,7 @@ jobs:
         id: create_tag
         run: |
           chmod +x kli
-          ./kli semver -t
+          ./kli semver -tv
       - name: Slack Notification
         uses: rtCamp/action-slack-notify@v2
         env:
