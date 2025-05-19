@@ -1,12 +1,12 @@
 resource "aws_s3_bucket" "s3_origin" {
-  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
-  bucket = var.distribution.s3_origin.bucket_name
+  count = var.distribution.s3_origin != null ? 1 : 0
+  bucket = var.distribution.s3_origin[count.index].bucket_name
   tags   = var.common_tags
 }
 
 resource "aws_cloudfront_origin_access_control" "s3_origin" {
-  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
-  name                              = "${var.distribution.s3_origin.bucket_name}-oac"
+  count = var.distribution.s3_origin != null ? 1 : 0
+  name                              = "${var.distribution.s3_origin[count.index].bucket_name}-oac"
   description                       = var.distribution.description
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
@@ -14,7 +14,7 @@ resource "aws_cloudfront_origin_access_control" "s3_origin" {
 }
 
 resource "aws_s3_bucket_public_access_block" "s3_origin" {
-  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
+  count = var.distribution.s3_origin != null ? 1 : 0
   bucket = aws_s3_bucket.s3_origin[count.index].id
 
   block_public_acls       = true
@@ -30,7 +30,7 @@ resource "aws_cloudfront_distribution" "distribution" {
   aliases             = try(var.distribution.cloudfront_settings.aliases, var.distribution_aliases)
 
   dynamic "origin" {
-    for_each = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? [1] : []
+    for_each = var.distribution.s3_origin != null ? [1] : []
     content {
       domain_name              = aws_s3_bucket.s3_origin[0].bucket_regional_domain_name
       origin_id                = aws_s3_bucket.s3_origin[0].bucket
@@ -46,7 +46,7 @@ resource "aws_cloudfront_distribution" "distribution" {
   }
 
   dynamic "origin" {
-    for_each = var.distribution.alb_origin != null && var.distribution.alb_origin.enabled ? [var.distribution.alb_origin] : []
+    for_each = var.distribution.alb_origin != null ? [var.distribution.alb_origin] : []
     content {
       domain_name = origin.value.domain_name
       origin_id   = origin.value.origin_id
@@ -93,7 +93,7 @@ resource "aws_cloudfront_distribution" "distribution" {
   }
 
   dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? [var.distribution.s3_origin] : []
+    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.s3_origin != null ? [var.distribution.s3_origin] : []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
@@ -110,7 +110,7 @@ resource "aws_cloudfront_distribution" "distribution" {
   }
 
   dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "s3" && var.distribution.alb_origin != null && var.distribution.alb_origin.enabled ? [var.distribution.alb_origin] : []
+    for_each = var.distribution.primary_origin_type == "s3" && var.distribution.alb_origin != null ? [var.distribution.alb_origin] : []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
@@ -186,7 +186,7 @@ resource "aws_cloudfront_distribution" "distribution" {
 
 
 resource "aws_s3_bucket_policy" "s3_origin" {
-  count = var.distribution.s3_origin != null && var.distribution.s3_origin.enabled ? 1 : 0
+  count = var.distribution.s3_origin != null ? 1 : 0
   bucket = aws_s3_bucket.s3_origin[count.index].id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -211,5 +211,5 @@ resource "aws_s3_bucket_policy" "s3_origin" {
       },
     ]
   })
-  depends_on = [aws_s3_bucket_public_access_block.s3_origin[count.index], aws_cloudfront_distribution.distribution]
+  depends_on = [aws_s3_bucket_public_access_block.s3_origin, aws_cloudfront_distribution.distribution]
 }

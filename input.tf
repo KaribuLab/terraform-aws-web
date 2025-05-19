@@ -32,7 +32,6 @@ variable "distribution" {
     s3_origin = optional(object({
       bucket_name = string
       path_pattern = optional(string, "/static/*")
-      enabled = optional(bool, true)
       
       # Configuración del comportamiento de caché para S3
       cache_behavior = optional(object({
@@ -50,7 +49,6 @@ variable "distribution" {
       origin_id   = string
       origin_path = optional(string, "")
       path_pattern = optional(string, "/api/*")
-      enabled = optional(bool, false)
       
       # Configuración del origen
       origin_config = optional(object({
@@ -110,8 +108,8 @@ variable "distribution" {
   })
   validation {
     condition = (
-      (var.distribution.primary_origin_type == "s3" && var.distribution.s3_origin != null && try(var.distribution.s3_origin.enabled, false)) ||
-      (var.distribution.primary_origin_type == "alb" && var.distribution.alb_origin != null && try(var.distribution.alb_origin.enabled, false))
+      (var.distribution.primary_origin_type == "s3" && var.distribution.s3_origin != null) ||
+      (var.distribution.primary_origin_type == "alb" && var.distribution.alb_origin != null)
     )
     error_message = "Debe proporcionar una configuración válida para el origen primario. Si primary_origin_type es 's3', debe proporcionar s3_origin. Si primary_origin_type es 'alb', debe proporcionar alb_origin."
   }
