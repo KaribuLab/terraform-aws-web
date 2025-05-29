@@ -47,6 +47,12 @@
 
 ### Output
 
+| Nombre | Descripción |
+|--------|-------------|
+| origin_id | ID de la distribución CloudFront |
+| domain_name | Nombre de dominio de la distribución CloudFront |
+| distribution_arn | ARN (Amazon Resource Name) de la distribución CloudFront |
+
 ## Desarrollo
 
 ### Requisitos
