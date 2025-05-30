@@ -13,11 +13,72 @@
 
 | Campo                                       | Tipo                   | Descripción                                                                                                               | Requirido |
 | ------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------- |
-| s3_orign                                    | string                 | Origen usado como CDN u Origen por defecto de la distribución                                                             | Si        |
 | description                                 | string                 | Descripción de la distribución                                                                                            | Si        |
-| behavior_patterns                           | optional(list(string)) | Patrones usados en el caso de que se use `s3_origin` como CDN                                                             | No        |
+| primary_origin_type                         | optional(string)       | Tipo de origen primario: "s3" o "alb". Por defecto: "s3"                                                                  | No        |
+| default_cache_behavior_compress             | optional(bool)         | Habilitar compresión para el comportamiento de caché predeterminado. Por defecto: false                                   | No        |
+| cloudfront_settings                         | optional(object)       | Configuración general de la distribución CloudFront                                                                       | No        |
+| s3_origin                                   | optional(object)       | Configuración del origen S3                                                                                               | No        |
+| alb_origin                                  | optional(object)       | Configuración del origen ALB                                                                                              | No        |
 | [lambda_association](#lambda_association)   | optional(list(object)) | Configuración para asociar funciones lambdas a un cache behaviour                                                         | No        |
 | [api_gateway_origins](#api_gateway_origins) | optional(list(object)) | Objeto que contiene los parámetros usados para asociar recursos de API Gateway como *"Cache Behavior"* de la distribución | No        |
+
+#### cloudfront_settings
+
+| Campo        | Tipo                | Descripción                                         | Requerido |
+| ------------ | ------------------- | --------------------------------------------------- | --------- |
+| enabled      | optional(bool)      | Habilitar la distribución. Por defecto: true        | No        |
+| root_object  | optional(string)    | Objeto raíz. Por defecto: "index.html"              | No        |
+| aliases      | optional(list(any)) | Alias para la distribución. Por defecto: []         | No        |
+| price_class  | optional(string)    | Clase de precio. Por defecto: "PriceClass_200"      | No        |
+| restriction  | optional(string)    | Restricción geográfica. Por defecto: "none"         | No        |
+| certificate  | optional(bool)      | Usar certificado SSL/TLS. Por defecto: true         | No        |
+
+#### s3_origin
+
+| Campo        | Tipo              | Descripción                                    | Requerido |
+| ------------ | ----------------- | ---------------------------------------------- | --------- |
+| bucket_name  | string            | Nombre del bucket S3                           | Si        |
+| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/static/*"       | No        |
+| cache_behavior | optional(object) | Configuración del comportamiento de caché      | No        |
+
+#### s3_origin.cache_behavior
+
+| Campo           | Tipo                 | Descripción                                                      | Requerido |
+| --------------- | -------------------- | ---------------------------------------------------------------- | --------- |
+| allowed_methods | optional(list(any))  | Métodos HTTP permitidos. Por defecto: ["GET", "HEAD"]            | No        |
+| cached_methods  | optional(list(any))  | Métodos HTTP para caching. Por defecto: ["GET", "HEAD"]          | No        |
+| query_string    | optional(bool)       | Habilita query string. Por defecto: false                        | No        |
+| cookies         | optional(string)     | Manejo de cookies. Por defecto: "none"                           | No        |
+| viewer_protocol | optional(string)     | Política de protocolo del viewer. Por defecto: "redirect-to-https" | No     |
+
+#### alb_origin
+
+| Campo        | Tipo              | Descripción                                  | Requerido |
+| ------------ | ----------------- | -------------------------------------------- | --------- |
+| domain_name  | string            | Dominio del ALB                              | Si        |
+| origin_id    | string            | ID del origen                                | Si        |
+| origin_path  | optional(string)  | Ruta principal del origen. Por defecto: ""   | No        |
+| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/api/*"        | No        |
+| origin_config | optional(object) | Configuración del origen                     | No        |
+| cache_behavior | optional(object) | Configuración del comportamiento de caché    | No        |
+
+#### alb_origin.origin_config
+
+| Campo         | Tipo                   | Descripción                                           | Requerido |
+| ------------- | ---------------------- | ----------------------------------------------------- | --------- |
+| http_port     | optional(number)       | Puerto HTTP. Por defecto: 80                          | No        |
+| https_port    | optional(number)       | Puerto HTTPS. Por defecto: 443                        | No        |
+| protocol      | optional(string)       | Protocolo de origen. Por defecto: "https-only"        | No        |
+| ssl_protocols | optional(list(string)) | Protocolos SSL. Por defecto: ["TLSv1.2"]              | No        |
+
+#### alb_origin.cache_behavior
+
+| Campo           | Tipo                   | Descripción                                                                | Requerido |
+| --------------- | ---------------------- | -------------------------------------------------------------------------- | --------- |
+| allowed_methods | optional(list(string)) | Métodos HTTP permitidos. Por defecto: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"] | No |
+| cached_methods  | optional(list(string)) | Métodos HTTP para caching. Por defecto: ["GET", "HEAD"]                    | No        |
+| viewer_protocol | optional(string)       | Política de protocolo del viewer. Por defecto: "https-only"                | No        |
+| query_string    | optional(bool)         | Habilita query string. Por defecto: true                                   | No        |
 
 #### lambda_association
 
@@ -39,11 +100,13 @@
 | Campo        | Tipo         | Descripción                                                                                                  | Requirido |
 | ------------ | ------------ | ------------------------------------------------------------------------------------------------------------ | --------- |
 | domain_name  | string       | Dominio autogenerado para API Gateway                                                                        | Si        |
-| path_pattern | string       | Patrón para mapear peticiones de CloudFront con recurso de API Gateway                                       | Si        |
 | origin_id    | string       | ID del origen asociado al API Gateway                                                                        | Si        |
 | origin_path  | string       | Ruta principal del origin                                                                                    | Si        |
+| path_pattern | string       | Patrón para mapear peticiones de CloudFront con recurso de API Gateway                                       | Si        |
 | headers      | list(string) | Lista de headers que deben llegar al recurso del API Gateway (Los que no estén en esta lista serán omitidos) | Si        |
 | cookies      | list(string) | Lista de cookies que deben llegar al recurso del API Gateway (Las que no estén en esta lista serán omitidas) | Si        |
+| origin_config | optional(object) | Configuración del origen                                                                               | No        |
+| cache_behavior | optional(object) | Configuración del comportamiento de caché                                                             | No        |
 
 ### Output
 
@@ -75,7 +138,9 @@ common_tags = {
 
 distribution = {
   description = "Hello World"
-  s3_origin = "karibu-hello-world"
+  s3_origin = {
+    bucket_name = "karibu-hello-world"
+  }
 }
 ```
 
@@ -115,50 +180,57 @@ La nueva estructura concentra toda la configuración en el objeto `distribution`
 ```hcl
 distribution = {
   # Configuración general
-  description        = "Mi distribución CloudFront"
+  description         = "Mi distribución CloudFront"
   primary_origin_type = "alb"    # "s3" o "alb"
-  enabled            = true
-  root_object        = "index.html"
-  aliases            = ["www.midominio.com"]
-  price_class        = "PriceClass_200"
-  restriction        = "none"
-  certificate        = true
+  
+  cloudfront_settings = {
+    enabled     = true
+    root_object = "index.html"
+    aliases     = ["www.midominio.com"]
+    price_class = "PriceClass_200"
+    restriction = "none"
+    certificate = true
+  }
   
   # Configuración del origen S3
   s3_origin = {
     # Propiedades básicas
     bucket_name  = "mi-bucket-origen"
     path_pattern = "/static/*"
-    enabled      = true
     
     # Comportamiento de caché
-    allowed_methods = ["GET", "HEAD"]
-    cached_methods  = ["GET", "HEAD"]
-    query_string    = false
-    cookies         = "none"
-    viewer_protocol = "redirect-to-https"
+    cache_behavior = {
+      allowed_methods = ["GET", "HEAD"]
+      cached_methods  = ["GET", "HEAD"]
+      query_string    = false
+      cookies         = "none"
+      viewer_protocol = "redirect-to-https"
+    }
   }
   
   # Configuración del origen ALB
   alb_origin = {
     # Propiedades básicas
-    domain_name = "mi-alb.us-east-1.elb.amazonaws.com"
-    origin_id   = "mi-alb-origen"
-    origin_path = ""
+    domain_name  = "mi-alb.us-east-1.elb.amazonaws.com"
+    origin_id    = "mi-alb-origen"
+    origin_path  = ""
     path_pattern = "/api/*"
-    enabled     = true
     
     # Configuración de origen personalizado
-    http_port     = 80
-    https_port    = 443
-    protocol      = "https-only"
-    ssl_protocols = ["TLSv1.2"]
+    origin_config = {
+      http_port     = 80
+      https_port    = 443
+      protocol      = "https-only"
+      ssl_protocols = ["TLSv1.2"]
+    }
     
     # Comportamiento de caché
-    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods  = ["GET", "HEAD"]
-    viewer_protocol = "https-only"
-    query_string    = true
+    cache_behavior = {
+      allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods  = ["GET", "HEAD"]
+      viewer_protocol = "https-only"
+      query_string    = true
+    }
   }
 }
 ```
@@ -169,24 +241,24 @@ Si deseas que S3 sea el origen predeterminado:
 
 ```hcl
 distribution = {
-  description        = "Mi distribución"
+  description         = "Mi distribución"
   primary_origin_type = "s3"
   
   s3_origin = {
     bucket_name = "mi-bucket-origen"
-    enabled     = true
     
     # Configuración específica de S3
-    allowed_methods = ["GET", "HEAD"]
-    cached_methods  = ["GET", "HEAD"]
-    viewer_protocol = "redirect-to-https"
+    cache_behavior = {
+      allowed_methods = ["GET", "HEAD"]
+      cached_methods  = ["GET", "HEAD"]
+      viewer_protocol = "redirect-to-https"
+    }
   }
   
   alb_origin = {
     domain_name  = "mi-alb.us-east-1.elb.amazonaws.com"
     origin_id    = "mi-alb-origen"
     path_pattern = "/api/*"
-    enabled      = true
   }
 }
 ```
@@ -197,23 +269,24 @@ Si deseas que el ALB sea el origen predeterminado:
 
 ```hcl
 distribution = {
-  description        = "Mi distribución"
+  description         = "Mi distribución"
   primary_origin_type = "alb"
   
   alb_origin = {
     domain_name = "mi-alb.us-east-1.elb.amazonaws.com"
     origin_id   = "mi-alb-origen"
-    enabled     = true
     
     # Configuración específica del ALB
-    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods  = ["GET", "HEAD"]
-    viewer_protocol = "https-only"
+    cache_behavior = {
+      allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods  = ["GET", "HEAD"]
+      viewer_protocol = "https-only"
+    }
   }
   
   s3_origin = {
     bucket_name  = "mi-bucket-origen"
     path_pattern = "/static/*"
-    enabled      = true
   }
 }
+```
