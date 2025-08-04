@@ -90,6 +90,9 @@ resource "aws_cloudfront_distribution" "distribution" {
     }
 
     compress = var.distribution.default_cache_behavior_compress
+    min_ttl = var.distribution.default_cache_behavior_min_ttl
+    default_ttl = var.distribution.default_cache_behavior_default_ttl
+    max_ttl = var.distribution.default_cache_behavior_max_ttl
     
     viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
   }

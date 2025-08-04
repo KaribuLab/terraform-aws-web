@@ -16,6 +16,9 @@
 | description                                 | string                 | Descripción de la distribución                                                                                            | Si        |
 | primary_origin_type                         | optional(string)       | Tipo de origen primario: "s3" o "alb". Por defecto: "s3"                                                                  | No        |
 | default_cache_behavior_compress             | optional(bool)         | Habilitar compresión para el comportamiento de caché predeterminado. Por defecto: false                                   | No        |
+| default_cache_behavior_min_ttl              | optional(number)       | Tiempo mínimo de vida (TTL) para el comportamiento de caché predeterminado en segundos. Por defecto: 0                    | No        |
+| default_cache_behavior_default_ttl          | optional(number)       | Tiempo de vida (TTL) predeterminado para el comportamiento de caché en segundos. Por defecto: 0                          | No        |
+| default_cache_behavior_max_ttl              | optional(number)       | Tiempo máximo de vida (TTL) para el comportamiento de caché predeterminado en segundos. Por defecto: 0                    | No        |
 | cloudfront_settings                         | optional(object)       | Configuración general de la distribución CloudFront                                                                       | No        |
 | s3_origin                                   | optional(object)       | Configuración del origen S3                                                                                               | No        |
 | alb_origin                                  | optional(object)       | Configuración del origen ALB                                                                                              | No        |
@@ -183,6 +186,12 @@ distribution = {
   description         = "Mi distribución CloudFront"
   primary_origin_type = "alb"    # "s3" o "alb"
   
+  # Configuración del comportamiento de caché predeterminado
+  default_cache_behavior_compress = true
+  default_cache_behavior_min_ttl = 0
+  default_cache_behavior_default_ttl = 3600
+  default_cache_behavior_max_ttl = 86400
+  
   cloudfront_settings = {
     enabled     = true
     root_object = "index.html"
@@ -244,6 +253,12 @@ distribution = {
   description         = "Mi distribución"
   primary_origin_type = "s3"
   
+  # Configuración del comportamiento de caché predeterminado
+  default_cache_behavior_compress = true
+  default_cache_behavior_min_ttl = 0
+  default_cache_behavior_default_ttl = 3600
+  default_cache_behavior_max_ttl = 86400
+  
   s3_origin = {
     bucket_name = "mi-bucket-origen"
     
@@ -271,6 +286,12 @@ Si deseas que el ALB sea el origen predeterminado:
 distribution = {
   description         = "Mi distribución"
   primary_origin_type = "alb"
+  
+  # Configuración del comportamiento de caché predeterminado
+  default_cache_behavior_compress = true
+  default_cache_behavior_min_ttl = 0
+  default_cache_behavior_default_ttl = 3600
+  default_cache_behavior_max_ttl = 86400
   
   alb_origin = {
     domain_name = "mi-alb.us-east-1.elb.amazonaws.com"

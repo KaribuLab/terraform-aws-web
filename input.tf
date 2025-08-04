@@ -18,6 +18,9 @@ variable "distribution" {
     description         = string
     primary_origin_type = optional(string, "s3") # "s3" o "alb"
     default_cache_behavior_compress = optional(bool, false)
+    default_cache_behavior_min_ttl = optional(number, 0)
+    default_cache_behavior_default_ttl = optional(number, 0)
+    default_cache_behavior_max_ttl = optional(number, 0)
 
     # Configuración general de la distribución
     cloudfront_settings = optional(object({
