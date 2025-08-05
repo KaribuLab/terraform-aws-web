@@ -1,11 +1,11 @@
 resource "aws_s3_bucket" "s3_origin" {
-  count = var.distribution.s3_origin != null ? 1 : 0
+  count  = var.distribution.s3_origin != null ? 1 : 0
   bucket = var.distribution.s3_origin.bucket_name
   tags   = var.common_tags
 }
 
 resource "aws_cloudfront_origin_access_control" "s3_origin" {
-  count = var.distribution.s3_origin != null ? 1 : 0
+  count                             = var.distribution.s3_origin != null ? 1 : 0
   name                              = "${var.distribution.s3_origin.bucket_name}-oac"
   description                       = var.distribution.description
   origin_access_control_origin_type = "s3"
@@ -14,7 +14,7 @@ resource "aws_cloudfront_origin_access_control" "s3_origin" {
 }
 
 resource "aws_s3_bucket_public_access_block" "s3_origin" {
-  count = var.distribution.s3_origin != null ? 1 : 0
+  count  = var.distribution.s3_origin != null ? 1 : 0
   bucket = aws_s3_bucket.s3_origin[count.index].id
 
   block_public_acls       = true
@@ -79,22 +79,24 @@ resource "aws_cloudfront_distribution" "distribution" {
     allowed_methods  = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.allowed_methods, var.s3_origin_allowed_methods) : try(var.distribution.alb_origin.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
     cached_methods   = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cached_methods, var.s3_origin_cached_methods) : try(var.distribution.alb_origin.cache_behavior.cached_methods, var.alb_origin_cached_methods)
     target_origin_id = var.distribution.primary_origin_type == "s3" ? aws_s3_bucket.s3_origin[0].bucket : var.distribution.alb_origin.origin_id
-    
-    forwarded_values {
-      query_string = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string) : try(var.distribution.alb_origin.cache_behavior.query_string, var.alb_origin_query_string)
-      headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
-      
-      cookies {
-        forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
+
+    dynamic "forwarded_values" {
+      for_each = var.distribution.default_cache_behavior_cache_policy_id == "658327ea-f89d-47f2-9698-9013ddb722e4" ? [var.distribution.s3_origin] : []
+      content {
+        query_string = try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string)
+        headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
+        cookies {
+          forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
+        }
       }
     }
 
-    compress = var.distribution.default_cache_behavior_compress
+    compress        = var.distribution.default_cache_behavior_compress
     cache_policy_id = var.distribution.default_cache_behavior_cache_policy_id
-    min_ttl = var.distribution.default_cache_behavior_min_ttl
-    default_ttl = var.distribution.default_cache_behavior_default_ttl
-    max_ttl = var.distribution.default_cache_behavior_max_ttl
-    
+    min_ttl         = var.distribution.default_cache_behavior_min_ttl
+    default_ttl     = var.distribution.default_cache_behavior_default_ttl
+    max_ttl         = var.distribution.default_cache_behavior_max_ttl
+
     viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
   }
 
@@ -182,17 +184,17 @@ resource "aws_cloudfront_distribution" "distribution" {
       restriction_type = try(var.distribution.cloudfront_settings.restriction, var.distribution_restriction)
     }
   }
-  
+
   viewer_certificate {
     cloudfront_default_certificate = try(var.distribution.cloudfront_settings.certificate, var.distribution_certificate)
   }
-  
+
   tags = var.common_tags
 }
 
 
 resource "aws_s3_bucket_policy" "s3_origin" {
-  count = var.distribution.s3_origin != null ? 1 : 0
+  count  = var.distribution.s3_origin != null ? 1 : 0
   bucket = aws_s3_bucket.s3_origin[count.index].id
   policy = jsonencode({
     Version = "2012-10-17"
