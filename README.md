@@ -19,6 +19,7 @@
 | default_cache_behavior_min_ttl              | optional(number)       | Tiempo mínimo de vida (TTL) para el comportamiento de caché predeterminado en segundos. Por defecto: 0                    | No        |
 | default_cache_behavior_default_ttl          | optional(number)       | Tiempo de vida (TTL) predeterminado para el comportamiento de caché en segundos. Por defecto: 0                          | No        |
 | default_cache_behavior_max_ttl              | optional(number)       | Tiempo máximo de vida (TTL) para el comportamiento de caché predeterminado en segundos. Por defecto: 0                    | No        |
+| default_cache_behavior_cache_policy_id      | optional(string)       | ID de la política de caché de CloudFront. Por defecto: "658327ea-f89d-47f2-9698-9013ddb722e4" (CachingDisabled)           | No        |
 | cloudfront_settings                         | optional(object)       | Configuración general de la distribución CloudFront                                                                       | No        |
 | s3_origin                                   | optional(object)       | Configuración del origen S3                                                                                               | No        |
 | alb_origin                                  | optional(object)       | Configuración del origen ALB                                                                                              | No        |
@@ -191,6 +192,7 @@ distribution = {
   default_cache_behavior_min_ttl = 0
   default_cache_behavior_default_ttl = 3600
   default_cache_behavior_max_ttl = 86400
+  default_cache_behavior_cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled
   
   cloudfront_settings = {
     enabled     = true
@@ -258,6 +260,7 @@ distribution = {
   default_cache_behavior_min_ttl = 0
   default_cache_behavior_default_ttl = 3600
   default_cache_behavior_max_ttl = 86400
+  default_cache_behavior_cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled
   
   s3_origin = {
     bucket_name = "mi-bucket-origen"
@@ -292,6 +295,7 @@ distribution = {
   default_cache_behavior_min_ttl = 0
   default_cache_behavior_default_ttl = 3600
   default_cache_behavior_max_ttl = 86400
+  default_cache_behavior_cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled
   
   alb_origin = {
     domain_name = "mi-alb.us-east-1.elb.amazonaws.com"
