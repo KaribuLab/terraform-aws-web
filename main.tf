@@ -1,12 +1,12 @@
 resource "aws_s3_bucket" "s3_origin" {
   count = var.distribution.s3_origin != null ? 1 : 0
-  bucket = var.distribution.s3_origin[count.index].bucket_name
+  bucket = var.distribution.s3_origin.bucket_name
   tags   = var.common_tags
 }
 
 resource "aws_cloudfront_origin_access_control" "s3_origin" {
   count = var.distribution.s3_origin != null ? 1 : 0
-  name                              = "${var.distribution.s3_origin[count.index].bucket_name}-oac"
+  name                              = "${var.distribution.s3_origin.bucket_name}-oac"
   description                       = var.distribution.description
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
