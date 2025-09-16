@@ -21,7 +21,7 @@ variable "distribution" {
     default_cache_behavior_min_ttl = optional(number, 0)
     default_cache_behavior_default_ttl = optional(number, 0)
     default_cache_behavior_max_ttl = optional(number, 0)
-    default_cache_behavior_cache_policy_id = optional(string, "658327ea-f89d-47f2-9698-9013ddb722e4")
+    default_cache_behavior_cache_policy_id = optional(string, "")
 
     # Configuración general de la distribución
     cloudfront_settings = optional(object({

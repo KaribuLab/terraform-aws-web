@@ -23,6 +23,31 @@ resource "aws_s3_bucket_public_access_block" "s3_origin" {
   restrict_public_buckets = true
 }
 
+resource "aws_cloudfront_cache_policy" "custom" {
+  count = var.distribution.default_cache_behavior_default_ttl != 0 || var.distribution.default_cache_behavior_max_ttl != 0 || var.distribution.default_cache_behavior_min_ttl != 0 ? 1 : 0
+
+  name        = "${var.distribution.s3_origin.bucket_name}-cache-policy"
+  default_ttl = var.distribution.default_cache_behavior_default_ttl
+  max_ttl     = var.distribution.default_cache_behavior_max_ttl
+  min_ttl     = var.distribution.default_cache_behavior_min_ttl
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+    headers_config {
+      header_behavior = "none"
+    }
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
+}
+
+locals {
+  default_cache_behavior_cache_policy_id = var.distribution.default_cache_behavior_cache_policy_id != "" ? var.distribution.default_cache_behavior_cache_policy_id : length(aws_cloudfront_cache_policy.custom) > 0 ? aws_cloudfront_cache_policy.custom[0].id : ""
+}
+
 resource "aws_cloudfront_distribution" "distribution" {
   comment             = var.distribution.description
   enabled             = try(var.distribution.cloudfront_settings.enabled, var.distribution_enabled)
@@ -81,7 +106,7 @@ resource "aws_cloudfront_distribution" "distribution" {
     target_origin_id = var.distribution.primary_origin_type == "s3" ? aws_s3_bucket.s3_origin[0].bucket : var.distribution.alb_origin.origin_id
 
     dynamic "forwarded_values" {
-      for_each = var.distribution.default_cache_behavior_cache_policy_id == "658327ea-f89d-47f2-9698-9013ddb722e4" ? [var.distribution.s3_origin] : []
+      for_each = local.default_cache_behavior_cache_policy_id != "" ? [var.distribution.s3_origin] : []
       content {
         query_string = try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string)
         headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
