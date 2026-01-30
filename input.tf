@@ -116,6 +116,24 @@ variable "distribution" {
     )
     error_message = "Debe proporcionar una configuración válida para el origen primario. Si primary_origin_type es 's3', debe proporcionar s3_origin. Si primary_origin_type es 'alb', debe proporcionar alb_origin."
   }
+  validation {
+    condition = !(
+      var.distribution.default_cache_behavior_cache_policy_id != "" &&
+      (var.distribution.default_cache_behavior_min_ttl != 0 ||
+       var.distribution.default_cache_behavior_default_ttl != 0 ||
+       var.distribution.default_cache_behavior_max_ttl != 0)
+    )
+    error_message = "No puede especificar 'default_cache_behavior_cache_policy_id' y valores TTL (!= 0) simultáneamente. Use cache_policy_id (configuración moderna) O TTLs personalizados (que crean cache policy automática), pero no ambos."
+  }
+  validation {
+    condition = (
+      var.distribution.default_cache_behavior_cache_policy_id != "" ||
+      var.distribution.default_cache_behavior_min_ttl != 0 ||
+      var.distribution.default_cache_behavior_default_ttl != 0 ||
+      var.distribution.default_cache_behavior_max_ttl != 0
+    )
+    error_message = "Debe especificar una configuración de caché explícita para default_cache_behavior. Opciones: (1) Especifique 'default_cache_behavior_cache_policy_id' con un ID de política válido, O (2) Especifique al menos un TTL (!= 0) para crear una cache policy automática."
+  }
 }
 
 variable "origin_custom_headers" {

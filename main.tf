@@ -106,9 +106,9 @@ resource "aws_cloudfront_distribution" "distribution" {
     target_origin_id = var.distribution.primary_origin_type == "s3" ? aws_s3_bucket.s3_origin[0].bucket : var.distribution.alb_origin.origin_id
 
     dynamic "forwarded_values" {
-      for_each = local.default_cache_behavior_cache_policy_id != "" ? [var.distribution.s3_origin] : []
+      for_each = local.default_cache_behavior_cache_policy_id == "" ? [1] : []
       content {
-        query_string = try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string)
+        query_string = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string) : try(var.distribution.alb_origin.cache_behavior.query_string, var.alb_origin_query_string)
         headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
         cookies {
           forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
@@ -117,7 +117,7 @@ resource "aws_cloudfront_distribution" "distribution" {
     }
 
     compress        = var.distribution.default_cache_behavior_compress
-    cache_policy_id = var.distribution.default_cache_behavior_cache_policy_id
+    cache_policy_id = local.default_cache_behavior_cache_policy_id != "" ? local.default_cache_behavior_cache_policy_id : null
     min_ttl         = var.distribution.default_cache_behavior_min_ttl
     default_ttl     = var.distribution.default_cache_behavior_default_ttl
     max_ttl         = var.distribution.default_cache_behavior_max_ttl
