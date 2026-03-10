@@ -6,3 +6,4 @@ provider.tf
 .terraform.tfstate.lock.info
 terraform.tfstate
 terraform.tfstate.backup
+bitbucket-repo
