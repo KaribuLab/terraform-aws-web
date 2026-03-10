@@ -214,6 +214,16 @@ resource "aws_cloudfront_distribution" "distribution" {
     cloudfront_default_certificate = try(var.distribution.cloudfront_settings.certificate, var.distribution_certificate)
   }
 
+  dynamic "custom_error_response" {
+    for_each = var.distribution.custom_error_response != null ? var.distribution.custom_error_response : []
+    content {
+      error_caching_min_ttl = custom_error_response.value.error_caching_min_ttl
+      error_code            = custom_error_response.value.error_code
+      response_code         = custom_error_response.value.response_code
+      response_page_path    = custom_error_response.value.response_page_path
+    }
+  }
+
   tags = var.common_tags
 }
 

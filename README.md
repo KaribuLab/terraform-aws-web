@@ -24,6 +24,7 @@
 | s3_origin                                   | optional(object)       | Configuración del origen S3                                                                                               | No        |
 | alb_origin                                  | optional(object)       | Configuración del origen ALB                                                                                              | No        |
 | [lambda_association](#lambda_association)   | optional(list(object)) | Configuración para asociar funciones lambdas a un cache behaviour                                                         | No        |
+| [custom_error_response](#custom_error_response) | optional(list(object)) | Configuración de respuestas personalizadas de error en CloudFront                                                         | No        |
 | [api_gateway_origins](#api_gateway_origins) | optional(list(object)) | Objeto que contiene los parámetros usados para asociar recursos de API Gateway como *"Cache Behavior"* de la distribución | No        |
 
 #### cloudfront_settings
@@ -98,6 +99,15 @@
 | lambda_version         | string                 | Versión de la función lambda                                                              | Si        |
 | viewer_protocol_policy | string                 | Pólitica de las peticiones que llegan al viewer (`redirect-to-https`)                     | Si        |
 | cookies                | optional(list(string)) | Lista de cookies que se propagarán                                                        | No        |
+
+#### custom_error_response
+
+| Campo                 | Tipo             | Descripción                                                                 | Requerido |
+| --------------------- | ---------------- | --------------------------------------------------------------------------- | --------- |
+| error_code            | number           | Código de error HTTP que CloudFront debe interceptar                        | Si        |
+| error_caching_min_ttl | optional(number) | TTL en segundos para cachear la respuesta de error. Por defecto: 300        | No        |
+| response_code         | optional(number) | Código HTTP que CloudFront devolverá al cliente                             | No        |
+| response_page_path    | optional(string) | Ruta del objeto (por ejemplo `/404.html`) para la respuesta personalizada   | No        |
 
 #### api_gateway_origins
 
@@ -243,6 +253,15 @@ distribution = {
       query_string    = true
     }
   }
+
+  custom_error_response = [
+    {
+      error_code            = 404
+      response_code         = 200
+      response_page_path    = "/index.html"
+      error_caching_min_ttl = 300
+    }
+  ]
 }
 ```
 
@@ -278,6 +297,14 @@ distribution = {
     origin_id    = "mi-alb-origen"
     path_pattern = "/api/*"
   }
+
+  custom_error_response = [
+    {
+      error_code         = 404
+      response_code      = 200
+      response_page_path = "/index.html"
+    }
+  ]
 }
 ```
 
@@ -313,5 +340,13 @@ distribution = {
     bucket_name  = "mi-bucket-origen"
     path_pattern = "/static/*"
   }
+
+  custom_error_response = [
+    {
+      error_code         = 404
+      response_code      = 200
+      response_page_path = "/index.html"
+    }
+  ]
 }
 ```

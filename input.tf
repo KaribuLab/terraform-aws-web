@@ -15,12 +15,12 @@ variable "common_tags" {
 
 variable "distribution" {
   type = object({
-    description         = string
-    primary_origin_type = optional(string, "s3") # "s3" o "alb"
-    default_cache_behavior_compress = optional(bool, false)
-    default_cache_behavior_min_ttl = optional(number, 0)
-    default_cache_behavior_default_ttl = optional(number, 0)
-    default_cache_behavior_max_ttl = optional(number, 0)
+    description                            = string
+    primary_origin_type                    = optional(string, "s3") # "s3" o "alb"
+    default_cache_behavior_compress        = optional(bool, false)
+    default_cache_behavior_min_ttl         = optional(number, 0)
+    default_cache_behavior_default_ttl     = optional(number, 0)
+    default_cache_behavior_max_ttl         = optional(number, 0)
     default_cache_behavior_cache_policy_id = optional(string, "")
 
     # Configuración general de la distribución
@@ -84,6 +84,12 @@ variable "distribution" {
       viewer_protocol_policy = string
       cookies                = optional(list(string))
     })))
+    custom_error_response = optional(list(object({
+      error_caching_min_ttl = optional(number, 300)
+      error_code            = number
+      response_code         = optional(number, null)
+      response_page_path    = optional(string, null)
+    })), [])
     api_gateway_origins = optional(list(object({
       origin_path  = string
       domain_name  = string
@@ -120,8 +126,8 @@ variable "distribution" {
     condition = !(
       var.distribution.default_cache_behavior_cache_policy_id != "" &&
       (var.distribution.default_cache_behavior_min_ttl != 0 ||
-       var.distribution.default_cache_behavior_default_ttl != 0 ||
-       var.distribution.default_cache_behavior_max_ttl != 0)
+        var.distribution.default_cache_behavior_default_ttl != 0 ||
+      var.distribution.default_cache_behavior_max_ttl != 0)
     )
     error_message = "No puede especificar 'default_cache_behavior_cache_policy_id' y valores TTL (!= 0) simultáneamente. Use cache_policy_id (configuración moderna) O TTLs personalizados (que crean cache policy automática), pero no ambos."
   }
