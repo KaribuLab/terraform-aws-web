@@ -84,6 +84,7 @@ variable "distribution" {
       viewer_protocol_policy = string
       cookies                = optional(list(string))
     })))
+    # Errores customizados
     custom_error_response = optional(list(object({
       error_caching_min_ttl = optional(number, 300)
       error_code            = number
