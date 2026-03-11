@@ -6,13 +6,13 @@ set -euo pipefail
 
 source_branch="feature/karibu-mirror"
 target_branch="master"
+source_repo_dir="${SOURCE_REPO_DIR:-..}"
+mirror_subdir="${MIRROR_SUBDIR:-karibu/terraform-aws-web}"
+
+commit_message=$( git -C "$source_repo_dir" log -1 --pretty=%s 2>/dev/null || git log -1 --pretty=%s )
 
 # Actualizar referencias remotas primero
 git fetch --prune --tags origin
-
-# Agregar todos los archivos al staging area ANTES de cambiar de rama
-# Esto evita el error de "archivos sin seguimiento serán sobrescritos"
-git add --all
 
 # Verificar si la rama existe remotamente usando ls-remote (más confiable)
 if git ls-remote --exit-code --heads origin "$source_branch" >/dev/null 2>&1; then
@@ -26,8 +26,28 @@ else
     # Crear la rama desde master (los archivos ya están en staging)
     git checkout -b "$source_branch"
 fi
+
+# Sincronizar contenido del repo de GitHub al subdirectorio espejo
+mkdir -p "$mirror_subdir"
+rsync -av --delete \
+  --exclude='.git' \
+  --exclude='bitbucket-repo' \
+  --exclude='.github' \
+  --exclude='scripts' \
+  --exclude='test' \
+  --exclude='.env' \
+  --exclude='.terraform' \
+  --exclude='.terraform.lock.hcl' \
+  --exclude='.terraform.tfstate' \
+  --exclude='.terraform.tfstate.backup' \
+  --exclude='terraform.tfstate' \
+  --exclude='terraform.tfstate.backup' \
+  --exclude='terraform.tfvars' \
+  "$source_repo_dir"/ "$mirror_subdir"/
+
+git add --all
+
 curl -sL https://github.com/KaribuLab/kli/releases/download/v0.2.2/kli  --output /tmp/kli && chmod +x /tmp/kli
-commit_message=$( git log -1 --pretty=%s )
 created_commit=false
 # Commit changes
 if ! git diff --cached --quiet; then
