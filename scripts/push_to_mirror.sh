@@ -26,11 +26,11 @@ fi
 curl -sL https://github.com/KaribuLab/kli/releases/download/v0.2.2/kli  --output /tmp/kli && chmod +x /tmp/kli
 commit_message=$( git log -1 --pretty=%B )
 previous_version=$( git describe --tags --abbrev=0 || echo "" )
-latest_version=$( /tmp/kli semver 2>&1 )
 # Commit changes
 git commit -m "feat: Mirror from GitHub: $commit_message" || true
 # Push to bitbucket (usar -u para crear la rama remota si no existe)
 git push -u origin feature/karibu-mirror
+latest_version=$( /tmp/kli semver 2>&1 )
 # Create a new tag
 if [ "$previous_version" != "$latest_version" ]; then
     echo "Creating new tag: $latest_version"
