@@ -16,7 +16,7 @@ jobs:
       - name: Checkout GitHub repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Clonar historial completo para mirror
+          fetch-depth: 0 # Clonar historial completo para mirror
 
       - name: Setup Git configuration
         run: |
@@ -31,12 +31,12 @@ jobs:
         run: |
           # Clonar repo de Bitbucket
           git clone https://${BITBUCKET_USERNAME}:${BITBUCKET_API_TOKEN}@${BITBUCKET_REPO_URL_CLARO} bitbucket-repo
-          
+
       - name: Sync to karibu directory
         run: |
           # Crear directorio karibu si no existe
           mkdir -p bitbucket-repo/karibu/terraform-aws-web
-          
+
           # Copiar contenido del repo actual al subdirectorio karibu
           rsync -av --delete \
             --exclude='.git' \
@@ -53,7 +53,7 @@ jobs:
             --exclude='terraform.tfstate.backup' \
             --exclude='terraform.tfvars' \
             ./ bitbucket-repo/karibu/terraform-aws-web/
-          
+
       - name: Commit and push to Bitbucket
         working-directory: bitbucket-repo
         env:
