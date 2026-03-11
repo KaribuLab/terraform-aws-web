@@ -31,6 +31,7 @@ variable "distribution" {
       price_class = optional(string, "PriceClass_200")
       restriction = optional(string, "none")
       certificate = optional(bool, true)
+      web_acl_id  = optional(string, "")
     }), {})
 
     # Configuración de S3

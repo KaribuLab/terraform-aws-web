@@ -37,6 +37,7 @@
 | price_class  | optional(string)    | Clase de precio. Por defecto: "PriceClass_200"      | No        |
 | restriction  | optional(string)    | Restricción geográfica. Por defecto: "none"         | No        |
 | certificate  | optional(bool)      | Usar certificado SSL/TLS. Por defecto: true         | No        |
+| web_acl_id   | optional(string)    | ARN/ID del Web ACL de AWS WAF para asociar a CloudFront. Por defecto: "" (se usa `null`) | No        |
 
 #### s3_origin
 
@@ -211,6 +212,7 @@ distribution = {
     price_class = "PriceClass_200"
     restriction = "none"
     certificate = true
+    web_acl_id  = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/mi-web-acl/11111111-2222-3333-4444-555555555555"
   }
   
   # Configuración del origen S3

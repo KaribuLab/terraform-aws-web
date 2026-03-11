@@ -53,6 +53,7 @@ resource "aws_cloudfront_distribution" "distribution" {
   enabled             = try(var.distribution.cloudfront_settings.enabled, var.distribution_enabled)
   default_root_object = try(var.distribution.cloudfront_settings.root_object, var.distribution_root_object)
   aliases             = try(var.distribution.cloudfront_settings.aliases, var.distribution_aliases)
+  web_acl_id          = try(var.distribution.cloudfront_settings.web_acl_id, "") != "" ? try(var.distribution.cloudfront_settings.web_acl_id, "") : null
 
   dynamic "origin" {
     for_each = var.distribution.s3_origin != null ? [1] : []
