@@ -136,6 +136,15 @@ resource "aws_cloudfront_distribution" "distribution" {
     max_ttl         = var.distribution.default_cache_behavior_max_ttl
 
     viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
+
+    # Asociaciones de CloudFront Functions
+    dynamic "function_association" {
+      for_each = var.distribution.default_cache_behavior_function_associations
+      content {
+        function_arn = function_association.value.function_arn
+        event_type   = function_association.value.event_type
+      }
+    }
   }
 
   # Orígenes S3 adicionales cuando ALB es primario (cada uno como ordered_cache_behavior)

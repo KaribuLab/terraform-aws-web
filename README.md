@@ -27,6 +27,7 @@
 | [lambda_association](#lambda_association)   | optional(list(object)) | Configuración para asociar funciones lambdas a un cache behaviour                                                         | No        |
 | [custom_error_response](#custom_error_response) | optional(list(object)) | Configuración de respuestas personalizadas de error en CloudFront                                                         | No        |
 | [api_gateway_origins](#api_gateway_origins) | optional(list(object)) | Objeto que contiene los parámetros usados para asociar recursos de API Gateway como *"Cache Behavior"* de la distribución | No        |
+| default_cache_behavior_function_associations | optional(list(object)) | Lista de asociaciones de CloudFront Functions al default_cache_behavior. Cada elemento: `function_arn` (string), `event_type` (string: "viewer-request" o "viewer-response") | No        |
 
 #### cloudfront_settings
 
@@ -134,6 +135,17 @@ Lista de orígenes S3 adicionales. Cada elemento tiene los mismos campos que `pr
 | cookies      | list(string) | Lista de cookies que deben llegar al recurso del API Gateway (Las que no estén en esta lista serán omitidas) | Si        |
 | origin_config | optional(object) | Configuración del origen                                                                               | No        |
 | cache_behavior | optional(object) | Configuración del comportamiento de caché                                                             | No        |
+
+#### default_cache_behavior_function_associations
+
+Lista de asociaciones de CloudFront Functions al comportamiento de caché predeterminado. **Las CloudFront Functions deben crearse previamente usando el submódulo** `modules/cloudfront-function`.
+
+| Campo        | Tipo   | Descripción                                                                                        | Requerido |
+| ------------ | ------ | -------------------------------------------------------------------------------------------------- | --------- |
+| function_arn | string | ARN de la CloudFront Function (output del submódulo)                                               | Sí        |
+| event_type   | string | Tipo de evento. Valores permitidos: `viewer-request`, `viewer-response`                           | Sí        |
+
+**Nota:** Los eventos `origin-request` y `origin-response` son exclusivos de Lambda@Edge y no se pueden usar con CloudFront Functions.
 
 ### Output
 
@@ -476,3 +488,127 @@ distribution = {
   ]
 }
 ```
+
+### Caso 5: Con CloudFront Function
+
+Para asociar una CloudFront Function a la distribución, primero debes crearla usando el submódulo y luego pasar su ARN:
+
+```hcl
+# Primero crear la función usando el submódulo (en otra unidad Terragrunt o módulo)
+module "viewer_request_function" {
+  source = "./modules/cloudfront-function"
+
+  name    = "my-viewer-request-function"
+  code    = file("${path.module}/viewer-request.js")
+  runtime = "cloudfront-js-1.0"
+  comment = "Función para reescribir URLs"
+  publish = true
+}
+
+# Luego usar el módulo raíz pasando el ARN
+distribution = {
+  description         = "Mi distribución con CloudFront Function"
+  primary_origin_type = "s3"
+  
+  # ... configuración de origenes y caché ...
+  
+  primary_s3_origin = {
+    bucket_name = "mi-bucket-principal"
+  }
+  
+  # Asociar la función al default_cache_behavior
+  default_cache_behavior_function_associations = [
+    {
+      function_arn = module.viewer_request_function.arn  # ARN desde el submódulo
+      event_type   = "viewer-request"                    # Solo viewer-request o viewer-response
+    }
+  ]
+}
+```
+
+**Nota importante:** Los eventos permitidos para CloudFront Functions son `viewer-request` y `viewer-response`. Los eventos `origin-request` y `origin-response` son exclusivos de Lambda@Edge.
+
+## CloudFront Functions y Terragrunt
+
+Este módulo incluye un submódulo separado para crear CloudFront Functions: `modules/cloudfront-function`.
+
+### Flujo recomendado con Terragrunt
+
+1. **Aplicar la unidad del submódulo** `cloudfront-function` primero:
+   - Inputs: `name`, `code`, `runtime`, `comment`, `publish`
+   - Output: `arn` (necesario para el paso 2)
+
+2. **Aplicar la unidad del módulo raíz** pasando el ARN de la función:
+   - Usar `dependency` para referenciar la unidad de la función
+   - Input: `default_cache_behavior_function_associations` con el ARN
+
+### Ejemplo de estructura Terragrunt
+
+```
+terragrunt/
+├── cloudfront-function/
+│   └── terragrunt.hcl
+└── web-distribution/
+    └── terragrunt.hcl
+```
+
+**cloudfront-function/terragrunt.hcl:**
+```hcl
+terraform {
+  source = "../../terraform-aws-web//modules/cloudfront-function"
+}
+
+inputs = {
+  name    = "my-viewer-request-function"
+  code    = file("${get_terragrunt_dir()}/viewer-request.js")
+  runtime = "cloudfront-js-1.0"
+  comment = "Reescribe URLs para SPA"
+  publish = true
+}
+```
+
+**web-distribution/terragrunt.hcl:**
+```hcl
+dependency "cloudfront_function" {
+  config_path = "../cloudfront-function"
+}
+
+terraform {
+  source = "../../terraform-aws-web"
+}
+
+inputs = {
+  common_tags = {
+    project = "my-project"
+  }
+  
+  distribution = {
+    description         = "Mi distribución"
+    primary_origin_type = "s3"
+    
+    primary_s3_origin = {
+      bucket_name = "my-bucket"
+    }
+    
+    # Asociar la función pasando el ARN desde el submódulo
+    default_cache_behavior_function_associations = [
+      {
+        function_arn = dependency.cloudfront_function.outputs.arn
+        event_type   = "viewer-request"
+      }
+    ]
+  }
+}
+```
+
+### Outputs para Terragrunt
+
+El módulo raíz expone `terragrunt_cloudfront_function_context` con metadatos de la distribución que pueden ser útiles para nombrar/documentar funciones:
+
+| Output | Descripción |
+|--------|-------------|
+| `terragrunt_cloudfront_function_context` | Objeto con `distribution_id`, `distribution_arn`, `domain_name`, `description`, `common_tags` |
+| `suggested_cloudfront_function_name` | Nombre sugerido basado en la distribución (convención, opcional) |
+| `distribution_id` | ID de la distribución CloudFront (alias de `origin_id`) |
+
+**Nota:** El ARN de la CloudFront Function **no** sale del módulo raíz, sino del **output del submódulo** `modules/cloudfront-function`.

@@ -132,7 +132,22 @@ variable "distribution" {
         query_string    = optional(bool, true)
       }), {})
     })))
+
+    # Asociaciones de CloudFront Functions al default_cache_behavior
+    default_cache_behavior_function_associations = optional(list(object({
+      function_arn = string
+      event_type   = string
+    })), [])
   })
+
+  # Validación de asociaciones de CloudFront Functions
+  validation {
+    condition = alltrue([
+      for assoc in var.distribution.default_cache_behavior_function_associations : contains(["viewer-request", "viewer-response"], assoc.event_type)
+    ])
+    error_message = "Las asociaciones de CloudFront Functions solo permiten event_type 'viewer-request' o 'viewer-response'."
+  }
+
   validation {
     condition = (
       (var.distribution.primary_origin_type == "s3" && var.distribution.primary_s3_origin != null) ||
