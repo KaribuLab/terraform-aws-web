@@ -34,8 +34,8 @@ variable "distribution" {
       web_acl_id  = optional(string, "")
     }), {})
 
-    # Configuración de S3
-    s3_origin = optional(object({
+    # Configuración de S3 - Origen primario (obligatorio cuando primary_origin_type es "s3")
+    primary_s3_origin = optional(object({
       bucket_name  = string
       path_pattern = optional(string, "/static/*")
 
@@ -48,6 +48,22 @@ variable "distribution" {
         viewer_protocol = optional(string, "redirect-to-https")
       }), {})
     }))
+
+    # Configuración de S3 - Orígenes adicionales opcionales
+    additional_s3_origins = optional(list(object({
+      bucket_name  = string
+      path_pattern = optional(string, "/static/*")
+      origin_id    = optional(string, null) # Si no se especifica, se usa el bucket_name
+
+      # Configuración del comportamiento de caché para S3
+      cache_behavior = optional(object({
+        allowed_methods = optional(list(any), ["GET", "HEAD"])
+        cached_methods  = optional(list(any), ["GET", "HEAD"])
+        query_string    = optional(bool, false)
+        cookies         = optional(string, "none")
+        viewer_protocol = optional(string, "redirect-to-https")
+      }), {})
+    })), [])
 
     # Configuración de ALB
     alb_origin = optional(object({
@@ -119,10 +135,20 @@ variable "distribution" {
   })
   validation {
     condition = (
-      (var.distribution.primary_origin_type == "s3" && var.distribution.s3_origin != null) ||
+      (var.distribution.primary_origin_type == "s3" && var.distribution.primary_s3_origin != null) ||
       (var.distribution.primary_origin_type == "alb" && var.distribution.alb_origin != null)
     )
-    error_message = "Debe proporcionar una configuración válida para el origen primario. Si primary_origin_type es 's3', debe proporcionar s3_origin. Si primary_origin_type es 'alb', debe proporcionar alb_origin."
+    error_message = "Debe proporcionar una configuración válida para el origen primario. Si primary_origin_type es 's3', debe proporcionar primary_s3_origin. Si primary_origin_type es 'alb', debe proporcionar alb_origin."
+  }
+  validation {
+    condition = (
+      length(var.distribution.additional_s3_origins) == 0 ||
+      length(distinct(concat(
+        var.distribution.primary_s3_origin != null ? [var.distribution.primary_s3_origin.bucket_name] : [],
+        [for o in var.distribution.additional_s3_origins : o.bucket_name]
+      ))) == length(var.distribution.additional_s3_origins) + (var.distribution.primary_s3_origin != null ? 1 : 0)
+    )
+    error_message = "Los bucket_name de primary_s3_origin y additional_s3_origins deben ser únicos (no pueden repetirse)."
   }
   validation {
     condition = !(

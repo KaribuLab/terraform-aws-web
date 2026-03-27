@@ -1,12 +1,12 @@
 resource "aws_s3_bucket" "s3_origin" {
-  count  = var.distribution.s3_origin != null ? 1 : 0
-  bucket = var.distribution.s3_origin.bucket_name
-  tags   = var.common_tags
+  for_each = local.s3_origins_map
+  bucket   = each.value.bucket_name
+  tags     = var.common_tags
 }
 
 resource "aws_cloudfront_origin_access_control" "s3_origin" {
-  count                             = var.distribution.s3_origin != null ? 1 : 0
-  name                              = "${var.distribution.s3_origin.bucket_name}-oac"
+  for_each                          = local.s3_origins_map
+  name                              = "${each.value.bucket_name}-oac"
   description                       = var.distribution.description
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
@@ -14,8 +14,8 @@ resource "aws_cloudfront_origin_access_control" "s3_origin" {
 }
 
 resource "aws_s3_bucket_public_access_block" "s3_origin" {
-  count  = var.distribution.s3_origin != null ? 1 : 0
-  bucket = aws_s3_bucket.s3_origin[count.index].id
+  for_each = local.s3_origins_map
+  bucket   = aws_s3_bucket.s3_origin[each.key].id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -26,7 +26,7 @@ resource "aws_s3_bucket_public_access_block" "s3_origin" {
 resource "aws_cloudfront_cache_policy" "custom" {
   count = var.distribution.default_cache_behavior_default_ttl != 0 || var.distribution.default_cache_behavior_max_ttl != 0 || var.distribution.default_cache_behavior_min_ttl != 0 ? 1 : 0
 
-  name        = "${var.distribution.s3_origin.bucket_name}-cache-policy"
+  name        = local.primary_s3_origin != null ? "${local.primary_s3_origin.bucket_name}-cache-policy" : "custom-cache-policy"
   default_ttl = var.distribution.default_cache_behavior_default_ttl
   max_ttl     = var.distribution.default_cache_behavior_max_ttl
   min_ttl     = var.distribution.default_cache_behavior_min_ttl
@@ -45,6 +45,18 @@ resource "aws_cloudfront_cache_policy" "custom" {
 }
 
 locals {
+  # Lista unificada de todos los orígenes S3 (primary + additional)
+  all_s3_origins = concat(
+    var.distribution.primary_s3_origin != null ? [merge(var.distribution.primary_s3_origin, { is_primary = true, origin_id = var.distribution.primary_s3_origin.bucket_name })] : [],
+    [for idx, origin in var.distribution.additional_s3_origins : merge(origin, { is_primary = false, origin_id = coalesce(origin.origin_id, origin.bucket_name) })]
+  )
+
+  # Mapa de orígenes S3 indexados por origin_id para fácil acceso
+  s3_origins_map = { for origin in local.all_s3_origins : origin.origin_id => origin }
+
+  # Referencia al origen primario
+  primary_s3_origin = var.distribution.primary_s3_origin != null ? local.s3_origins_map[var.distribution.primary_s3_origin.bucket_name] : null
+
   default_cache_behavior_cache_policy_id = var.distribution.default_cache_behavior_cache_policy_id != "" ? var.distribution.default_cache_behavior_cache_policy_id : length(aws_cloudfront_cache_policy.custom) > 0 ? aws_cloudfront_cache_policy.custom[0].id : ""
 }
 
@@ -56,11 +68,11 @@ resource "aws_cloudfront_distribution" "distribution" {
   web_acl_id          = try(var.distribution.cloudfront_settings.web_acl_id, "") != "" ? try(var.distribution.cloudfront_settings.web_acl_id, "") : null
 
   dynamic "origin" {
-    for_each = var.distribution.s3_origin != null ? [1] : []
+    for_each = local.s3_origins_map
     content {
-      domain_name              = aws_s3_bucket.s3_origin[0].bucket_regional_domain_name
-      origin_id                = aws_s3_bucket.s3_origin[0].bucket
-      origin_access_control_id = aws_cloudfront_origin_access_control.s3_origin[0].id
+      domain_name              = aws_s3_bucket.s3_origin[origin.key].bucket_regional_domain_name
+      origin_id                = origin.value.origin_id
+      origin_access_control_id = aws_cloudfront_origin_access_control.s3_origin[origin.key].id
       dynamic "custom_header" {
         for_each = var.origin_custom_headers
         content {
@@ -102,17 +114,17 @@ resource "aws_cloudfront_distribution" "distribution" {
   }
 
   default_cache_behavior {
-    allowed_methods  = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.allowed_methods, var.s3_origin_allowed_methods) : try(var.distribution.alb_origin.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
-    cached_methods   = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cached_methods, var.s3_origin_cached_methods) : try(var.distribution.alb_origin.cache_behavior.cached_methods, var.alb_origin_cached_methods)
-    target_origin_id = var.distribution.primary_origin_type == "s3" ? aws_s3_bucket.s3_origin[0].bucket : var.distribution.alb_origin.origin_id
+    allowed_methods  = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.allowed_methods, var.s3_origin_allowed_methods) : try(var.distribution.alb_origin.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
+    cached_methods   = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.cached_methods, var.s3_origin_cached_methods) : try(var.distribution.alb_origin.cache_behavior.cached_methods, var.alb_origin_cached_methods)
+    target_origin_id = var.distribution.primary_origin_type == "s3" ? local.primary_s3_origin.origin_id : var.distribution.alb_origin.origin_id
 
     dynamic "forwarded_values" {
       for_each = local.default_cache_behavior_cache_policy_id == "" ? [1] : []
       content {
-        query_string = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.query_string, var.s3_origin_query_string) : try(var.distribution.alb_origin.cache_behavior.query_string, var.alb_origin_query_string)
+        query_string = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.query_string, var.s3_origin_query_string) : try(var.distribution.alb_origin.cache_behavior.query_string, var.alb_origin_query_string)
         headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
         cookies {
-          forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
+          forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
         }
       }
     }
@@ -123,16 +135,35 @@ resource "aws_cloudfront_distribution" "distribution" {
     default_ttl     = var.distribution.default_cache_behavior_default_ttl
     max_ttl         = var.distribution.default_cache_behavior_max_ttl
 
-    viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
+    viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
   }
 
+  # Orígenes S3 adicionales cuando ALB es primario (cada uno como ordered_cache_behavior)
   dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.s3_origin != null ? [var.distribution.s3_origin] : []
+    for_each = var.distribution.primary_origin_type == "alb" && length(var.distribution.additional_s3_origins) > 0 ? var.distribution.additional_s3_origins : []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
       cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
-      target_origin_id = aws_s3_bucket.s3_origin[0].bucket
+      target_origin_id = coalesce(ordered_cache_behavior.value.origin_id, ordered_cache_behavior.value.bucket_name)
+      forwarded_values {
+        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
+        cookies {
+          forward = try(ordered_cache_behavior.value.cache_behavior.cookies, var.s3_origin_cookies)
+        }
+      }
+      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol)
+    }
+  }
+
+  # Primary S3 origin como ordered_cache_behavior cuando ALB es primario (si tiene path_pattern)
+  dynamic "ordered_cache_behavior" {
+    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.primary_s3_origin != null && var.distribution.primary_s3_origin.path_pattern != "/static/*" ? [var.distribution.primary_s3_origin] : []
+    content {
+      path_pattern     = ordered_cache_behavior.value.path_pattern
+      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
+      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
+      target_origin_id = local.primary_s3_origin.origin_id
       forwarded_values {
         query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
         cookies {
@@ -167,7 +198,7 @@ resource "aws_cloudfront_distribution" "distribution" {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = ordered_cache_behavior.value.allowed_methods
       cached_methods   = ordered_cache_behavior.value.cached_methods
-      target_origin_id = aws_s3_bucket.s3_origin[0].bucket
+      target_origin_id = var.distribution.primary_origin_type == "s3" ? local.primary_s3_origin.origin_id : var.distribution.alb_origin.origin_id
       forwarded_values {
         query_string = ordered_cache_behavior.value.query_string
         headers      = ordered_cache_behavior.value.headers
@@ -230,8 +261,8 @@ resource "aws_cloudfront_distribution" "distribution" {
 
 
 resource "aws_s3_bucket_policy" "s3_origin" {
-  count  = var.distribution.s3_origin != null ? 1 : 0
-  bucket = aws_s3_bucket.s3_origin[count.index].id
+  for_each = local.s3_origins_map
+  bucket   = aws_s3_bucket.s3_origin[each.key].id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -245,7 +276,7 @@ resource "aws_s3_bucket_policy" "s3_origin" {
         ]
         Effect = "Allow"
         Resource = [
-          "arn:aws:s3:::${aws_s3_bucket.s3_origin[count.index].bucket}/*"
+          "arn:aws:s3:::${aws_s3_bucket.s3_origin[each.key].bucket}/*"
         ],
         Condition : {
           StringEquals : {
@@ -263,7 +294,7 @@ resource "aws_s3_bucket_policy" "s3_origin" {
         ]
         Effect = "Allow"
         Resource = [
-          "arn:aws:s3:::${aws_s3_bucket.s3_origin[count.index].bucket}"
+          "arn:aws:s3:::${aws_s3_bucket.s3_origin[each.key].bucket}"
         ],
         Condition : {
           StringEquals : {

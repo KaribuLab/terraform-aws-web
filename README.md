@@ -21,7 +21,8 @@
 | default_cache_behavior_max_ttl              | optional(number)       | Tiempo máximo de vida (TTL) para el comportamiento de caché predeterminado en segundos. Por defecto: 0                    | No        |
 | default_cache_behavior_cache_policy_id      | optional(string)       | ID de la política de caché de CloudFront. Por defecto: "658327ea-f89d-47f2-9698-9013ddb722e4" (CachingDisabled)           | No        |
 | cloudfront_settings                         | optional(object)       | Configuración general de la distribución CloudFront                                                                       | No        |
-| s3_origin                                   | optional(object)       | Configuración del origen S3                                                                                               | No        |
+| [primary_s3_origin](#primary_s3_origin)     | optional(object)       | Configuración del origen S3 primario (requerido cuando primary_origin_type es "s3")                                       | No        |
+| [additional_s3_origins](#additional_s3_origins) | optional(list(object)) | Lista de orígenes S3 adicionales                                                                                          | No        |
 | alb_origin                                  | optional(object)       | Configuración del origen ALB                                                                                              | No        |
 | [lambda_association](#lambda_association)   | optional(list(object)) | Configuración para asociar funciones lambdas a un cache behaviour                                                         | No        |
 | [custom_error_response](#custom_error_response) | optional(list(object)) | Configuración de respuestas personalizadas de error en CloudFront                                                         | No        |
@@ -39,15 +40,15 @@
 | certificate  | optional(bool)      | Usar certificado SSL/TLS. Por defecto: true         | No        |
 | web_acl_id   | optional(string)    | ARN/ID del Web ACL de AWS WAF para asociar a CloudFront. Por defecto: "" (se usa `null`) | No        |
 
-#### s3_origin
+#### primary_s3_origin
 
-| Campo        | Tipo              | Descripción                                    | Requerido |
-| ------------ | ----------------- | ---------------------------------------------- | --------- |
-| bucket_name  | string            | Nombre del bucket S3                           | Si        |
-| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/static/*"       | No        |
-| cache_behavior | optional(object) | Configuración del comportamiento de caché      | No        |
+| Campo        | Tipo              | Descripción                                                            | Requerido |
+| ------------ | ----------------- | ---------------------------------------------------------------------- | --------- |
+| bucket_name  | string            | Nombre del bucket S3                                                   | Si        |
+| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/static/*"                                 | No        |
+| cache_behavior | optional(object) | Configuración del comportamiento de caché                              | No        |
 
-#### s3_origin.cache_behavior
+#### primary_s3_origin.cache_behavior
 
 | Campo           | Tipo                 | Descripción                                                      | Requerido |
 | --------------- | -------------------- | ---------------------------------------------------------------- | --------- |
@@ -55,7 +56,18 @@
 | cached_methods  | optional(list(any))  | Métodos HTTP para caching. Por defecto: ["GET", "HEAD"]          | No        |
 | query_string    | optional(bool)       | Habilita query string. Por defecto: false                        | No        |
 | cookies         | optional(string)     | Manejo de cookies. Por defecto: "none"                           | No        |
-| viewer_protocol | optional(string)     | Política de protocolo del viewer. Por defecto: "redirect-to-https" | No     |
+| viewer_protocol | optional(string)     | Política de protocolo del viewer. Por defecto: "redirect-to-https" | No        |
+
+#### additional_s3_origins
+
+Lista de orígenes S3 adicionales. Cada elemento tiene los mismos campos que `primary_s3_origin` más:
+
+| Campo        | Tipo              | Descripción                                                                                 | Requerido |
+| ------------ | ----------------- | ------------------------------------------------------------------------------------------- | --------- |
+| bucket_name  | string            | Nombre del bucket S3                                                                        | Si        |
+| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/static/*"                                                    | No        |
+| origin_id    | optional(string)  | ID único del origen para CloudFront. Si no se especifica, se usa el `bucket_name`           | No        |
+| cache_behavior | optional(object) | Configuración del comportamiento de caché                                                   | No        |
 
 #### alb_origin
 
@@ -130,6 +142,9 @@
 | origin_id | ID de la distribución CloudFront |
 | domain_name | Nombre de dominio de la distribución CloudFront |
 | distribution_arn | ARN (Amazon Resource Name) de la distribución CloudFront |
+| s3_bucket_ids | Mapa de origin_id a bucket_id para todos los orígenes S3 creados |
+| s3_origin_ids | Lista de origin_ids de todos los orígenes S3 configurados |
+| primary_s3_origin_id | Origin ID del origen S3 primario (usado en default_cache_behavior) |
 
 ## Desarrollo
 
@@ -153,7 +168,7 @@ common_tags = {
 
 distribution = {
   description = "Hello World"
-  s3_origin = {
+  primary_s3_origin = {
     bucket_name = "karibu-hello-world"
   }
 }
@@ -215,8 +230,8 @@ distribution = {
     web_acl_id  = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/mi-web-acl/11111111-2222-3333-4444-555555555555"
   }
   
-  # Configuración del origen S3
-  s3_origin = {
+  # Configuración del origen S3 primario
+  primary_s3_origin = {
     # Propiedades básicas
     bucket_name  = "mi-bucket-origen"
     path_pattern = "/static/*"
@@ -283,7 +298,7 @@ distribution = {
   default_cache_behavior_max_ttl = 86400
   default_cache_behavior_cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled
   
-  s3_origin = {
+  primary_s3_origin = {
     bucket_name = "mi-bucket-origen"
     
     # Configuración específica de S3
@@ -338,7 +353,7 @@ distribution = {
     }
   }
   
-  s3_origin = {
+  primary_s3_origin = {
     bucket_name  = "mi-bucket-origen"
     path_pattern = "/static/*"
   }
@@ -348,6 +363,115 @@ distribution = {
       error_code         = 404
       response_code      = 200
       response_page_path = "/index.html"
+    }
+  ]
+}
+```
+
+### Caso 3: Múltiples orígenes S3
+
+Si necesitas servir contenido desde múltiples buckets S3 (por ejemplo, uno para el sitio principal y otro para assets):
+
+```hcl
+distribution = {
+  description         = "Mi distribución multi-bucket"
+  primary_origin_type = "s3"
+  
+  # Configuración del comportamiento de caché predeterminado
+  default_cache_behavior_compress = true
+  default_cache_behavior_min_ttl = 0
+  default_cache_behavior_default_ttl = 3600
+  default_cache_behavior_max_ttl = 86400
+  default_cache_behavior_cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled
+  
+  # Origen S3 primario - sirve el sitio principal en /
+  primary_s3_origin = {
+    bucket_name = "mi-bucket-principal"
+    
+    cache_behavior = {
+      allowed_methods = ["GET", "HEAD"]
+      cached_methods  = ["GET", "HEAD"]
+      viewer_protocol = "redirect-to-https"
+    }
+  }
+  
+  # Orígenes S3 adicionales - sirven assets en /assets/*
+  additional_s3_origins = [
+    {
+      bucket_name  = "mi-bucket-assets"
+      path_pattern = "/assets/*"
+      origin_id    = "assets-origin"  # Opcional: si no se especifica, usa bucket_name
+      
+      cache_behavior = {
+        allowed_methods = ["GET", "HEAD"]
+        cached_methods  = ["GET", "HEAD"]
+        viewer_protocol = "redirect-to-https"
+      }
+    },
+    {
+      bucket_name  = "mi-bucket-imagenes"
+      path_pattern = "/images/*"
+      
+      cache_behavior = {
+        allowed_methods = ["GET", "HEAD"]
+        cached_methods  = ["GET", "HEAD"]
+        viewer_protocol = "redirect-to-https"
+      }
+    }
+  ]
+
+  custom_error_response = [
+    {
+      error_code         = 404
+      response_code      = 200
+      response_page_path = "/index.html"
+    }
+  ]
+}
+```
+
+### Caso 4: ALB primario con múltiples orígenes S3 secundarios
+
+Si tu backend está en ALB pero necesitas servir archivos estáticos desde diferentes buckets:
+
+```hcl
+distribution = {
+  description         = "Mi distribución ALB + S3"
+  primary_origin_type = "alb"
+  
+  # Configuración del comportamiento de caché predeterminado
+  default_cache_behavior_compress = true
+  default_cache_behavior_min_ttl = 0
+  default_cache_behavior_default_ttl = 3600
+  default_cache_behavior_max_ttl = 86400
+  default_cache_behavior_cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled
+  
+  alb_origin = {
+    domain_name = "mi-alb.us-east-1.elb.amazonaws.com"
+    origin_id   = "api-backend"
+    
+    cache_behavior = {
+      allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods  = ["GET", "HEAD"]
+      viewer_protocol = "https-only"
+    }
+  }
+  
+  # Origen S3 primario (puede tener un path_pattern específico o ser default fallback)
+  primary_s3_origin = {
+    bucket_name  = "mi-bucket-spa"
+    path_pattern = "/app/*"
+  }
+  
+  # Orígenes S3 adicionales para diferentes tipos de contenido
+  additional_s3_origins = [
+    {
+      bucket_name  = "mi-bucket-media"
+      path_pattern = "/media/*"
+    },
+    {
+      bucket_name  = "mi-bucket-docs"
+      path_pattern = "/docs/*"
     }
   ]
 }
