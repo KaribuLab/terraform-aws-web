@@ -37,7 +37,9 @@ variable "distribution" {
     # Configuración de S3 - Origen primario (obligatorio cuando primary_origin_type es "s3")
     primary_s3_origin = optional(object({
       bucket_name  = string
-      path_pattern = optional(string, "/static/*")
+      # Nota: path_pattern solo se usa cuando ALB es primario y se crea un ordered_cache_behavior
+      # Cuando S3 es primario, el default_cache_behavior maneja todo el trafico sin path_pattern
+      path_pattern = optional(string, null)
 
       # Configuración del comportamiento de caché para S3
       cache_behavior = optional(object({

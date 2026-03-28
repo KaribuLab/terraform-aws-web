@@ -46,8 +46,14 @@
 | Campo        | Tipo              | Descripción                                                            | Requerido |
 | ------------ | ----------------- | ---------------------------------------------------------------------- | --------- |
 | bucket_name  | string            | Nombre del bucket S3                                                   | Si        |
-| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/static/*"                                 | No        |
+| path_pattern | optional(string)  | Patrón de ruta. Ver nota abajo sobre su uso                              | No        |
 | cache_behavior | optional(object) | Configuración del comportamiento de caché                              | No        |
+
+**Nota importante sobre `path_pattern` en `primary_s3_origin`:**
+
+- Cuando **`primary_origin_type = "s3"`**: El `path_pattern` **no se utiliza**. El tráfico "por defecto" (catch-all) va al bucket primario a través del `default_cache_behavior`, que no requiere path_pattern. Puedes omitir este campo o dejarlo en `null`.
+
+- Cuando **`primary_origin_type = "alb"`**: El `path_pattern` **sí se usa** para crear un `ordered_cache_behavior` que enruta tráfico específico (por ejemplo `/static/*` o `/app/*`) al bucket S3 primario, mientras que el resto va al ALB.
 
 #### primary_s3_origin.cache_behavior
 
@@ -61,14 +67,43 @@
 
 #### additional_s3_origins
 
-Lista de orígenes S3 adicionales. Cada elemento tiene los mismos campos que `primary_s3_origin` más:
+Lista de orígenes S3 adicionales. Cada bucket se registra como un **origen** en CloudFront, con comportamiento de caché según el caso:
 
 | Campo        | Tipo              | Descripción                                                                                 | Requerido |
 | ------------ | ----------------- | ------------------------------------------------------------------------------------------- | --------- |
 | bucket_name  | string            | Nombre del bucket S3                                                                        | Si        |
-| path_pattern | optional(string)  | Patrón de ruta. Por defecto: "/static/*"                                                    | No        |
+| path_pattern | optional(string)  | Patrón de ruta. Solo se usa cuando ALB es primario (ver nota abajo)                        | No        |
 | origin_id    | optional(string)  | ID único del origen para CloudFront. Si no se especifica, se usa el `bucket_name`           | No        |
 | cache_behavior | optional(object) | Configuración del comportamiento de caché                                                   | No        |
+
+**Nota importante sobre el uso de `path_pattern` y `additional_s3_origins`:**
+
+- Cuando **`primary_origin_type = "alb"`**: Cada origen adicional se crea como `ordered_cache_behavior` con su `path_pattern` (ej: `/assets/*`, `/images/*`). El tráfico que coincida con ese patrón va al bucket correspondiente.
+
+- Cuando **`primary_origin_type = "s3"`**: Los orígenes adicionales se **registran como orígenes** en CloudFront, pero **no se crean comportamientos ordenados automáticamente**. Esto permite usar **CloudFront Functions (runtime 2.0)** para enrutamiento dinámico. Por ejemplo, puedes usar `cf.selectRequestOriginById()` en una función viewer-request para enrutar según el header `Host` (ej: `staging.dominio.com` vs `dev.dominio.com`) a diferentes buckets.
+
+**Ejemplo de enrutamiento por dominio con CloudFront Function:**
+
+```javascript
+// CloudFront Function (runtime 2.0)
+import cf from 'cloudfront';
+
+function handler(event) {
+    var request = event.request;
+    var host = request.headers.host ? request.headers.host.value : '';
+    
+    // Enrutar según el dominio
+    if (host.includes('staging')) {
+        cf.selectRequestOriginById('bucket-staging');
+    } else {
+        cf.selectRequestOriginById('bucket-dev');
+    }
+    
+    return request;
+}
+```
+
+En este caso, el `path_pattern` de los orígenes adicionales **no se usa**; el enrutamiento lo controla la función.
 
 #### alb_origin
 
@@ -527,6 +562,81 @@ distribution = {
 ```
 
 **Nota importante:** Los eventos permitidos para CloudFront Functions son `viewer-request` y `viewer-response`. Los eventos `origin-request` y `origin-response` son exclusivos de Lambda@Edge.
+
+### Caso 6: Enrutamiento por dominio con CloudFront Function (Runtime 2.0)
+
+Si tienes múltiples entornos (dev, staging) con diferentes buckets y quieres usar un solo dominio con subdominios para enrutar a cada uno:
+
+```hcl
+# Código de la CloudFront Function (viewer-request.js)
+# Usa runtime 2.0 para poder cambiar el origen dinámicamente
+/*
+import cf from 'cloudfront';
+
+function handler(event) {
+    var request = event.request;
+    var host = request.headers.host ? request.headers.host.value : '';
+    
+    // Enrutar según el subdominio
+    if (host.includes('staging')) {
+        cf.selectRequestOriginById('bucket-staging-assets');
+    } else if (host.includes('dev')) {
+        cf.selectRequestOriginById('bucket-dev-assets');
+    }
+    // Si no coincide, usa el origen por defecto del behavior
+    
+    return request;
+}
+*/
+
+# Primero crear la función con runtime 2.0
+module "domain_routing_function" {
+  source = "./modules/cloudfront-function"
+
+  name    = "domain-routing-function"
+  code    = file("${path.module}/viewer-request.js")
+  runtime = "cloudfront-js-2.0"  # Runtime 2.0 permite cambiar origen
+  comment = "Enruta según subdominio (staging/dev)"
+  publish = true
+}
+
+# Luego usar el módulo raíz con múltiples buckets
+distribution = {
+  description         = "CDN multi-entorno"
+  primary_origin_type = "s3"
+  
+  # Bucket por defecto (dev)
+  primary_s3_origin = {
+    bucket_name = "bucket-dev-assets"
+  }
+  
+  # Bucket adicional para staging (se registra como origen, no como ordered behavior)
+  additional_s3_origins = [
+    {
+      bucket_name = "bucket-staging-assets"
+      # origin_id se usará en la función: cf.selectRequestOriginById('bucket-staging-assets')
+    }
+  ]
+  
+  # La función enrutará según el header Host
+  default_cache_behavior_function_associations = [
+    {
+      function_arn = module.domain_routing_function.arn
+      event_type   = "viewer-request"
+    }
+  ]
+  
+  cloudfront_settings = {
+    aliases = ["dev.dominio.com", "staging.dominio.com"]
+  }
+}
+```
+
+**Puntos clave de este caso:**
+- Usa **runtime 2.0** (`cloudfront-js-2.0`) que permite modificar el origen
+- Los buckets adicionales se registran como **orígenes** pero no crean `ordered_cache_behavior` porque S3 es el primario
+- La función usa `cf.selectRequestOriginById()` para cambiar el origen según el dominio
+- **No se usa** `path_pattern` para el enrutamiento; eso es para `ordered_cache_behavior` con ALB primario
 
 ## CloudFront Functions y Terragrunt
 
