@@ -167,7 +167,25 @@ resource "aws_cloudfront_distribution" "distribution" {
 
   # Primary S3 origin como ordered_cache_behavior cuando ALB es primario (si tiene path_pattern)
   dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.primary_s3_origin != null && var.distribution.primary_s3_origin.path_pattern != "/static/*" ? [var.distribution.primary_s3_origin] : []
+    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.primary_s3_origin != null && var.distribution.primary_s3_origin.path_pattern != null ? [var.distribution.primary_s3_origin] : []
+    content {
+      path_pattern     = ordered_cache_behavior.value.path_pattern
+      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
+      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
+      target_origin_id = local.primary_s3_origin.origin_id
+      forwarded_values {
+        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
+        cookies {
+          forward = try(ordered_cache_behavior.value.cache_behavior.cookies, var.s3_origin_cookies)
+        }
+      }
+      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol)
+    }
+  }
+
+  # Primary S3 origin como ordered_cache_behavior cuando S3 es primario (si tiene path_pattern)
+  dynamic "ordered_cache_behavior" {
+    for_each = var.distribution.primary_origin_type == "s3" && var.distribution.primary_s3_origin != null && var.distribution.primary_s3_origin.path_pattern != null ? [var.distribution.primary_s3_origin] : []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
