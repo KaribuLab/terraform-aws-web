@@ -147,7 +147,7 @@ resource "aws_cloudfront_distribution" "distribution" {
     }
   }
 
-  # Orígenes S3 adicionales (cada uno como ordered_cache_behavior)
+  # Orígenes S3 adicionales
   dynamic "ordered_cache_behavior" {
     for_each = length(var.distribution.additional_s3_origins) > 0 ? var.distribution.additional_s3_origins : []
     content {
