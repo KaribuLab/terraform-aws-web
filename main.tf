@@ -147,9 +147,9 @@ resource "aws_cloudfront_distribution" "distribution" {
     }
   }
 
-  # Orígenes S3 adicionales cuando ALB es primario (cada uno como ordered_cache_behavior)
+  # Orígenes S3 adicionales (cada uno como ordered_cache_behavior)
   dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "alb" && length(var.distribution.additional_s3_origins) > 0 ? var.distribution.additional_s3_origins : []
+    for_each = length(var.distribution.additional_s3_origins) > 0 ? var.distribution.additional_s3_origins : []
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
