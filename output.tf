@@ -33,11 +33,11 @@ output "distribution_id" {
 output "terragrunt_cloudfront_function_context" {
   description = "Contexto para uso en Terragrunt al crear CloudFront Functions asociadas"
   value = {
-    distribution_id   = aws_cloudfront_distribution.distribution.id
-    distribution_arn  = aws_cloudfront_distribution.distribution.arn
-    domain_name     = aws_cloudfront_distribution.distribution.domain_name
-    description       = var.distribution.description
-    common_tags       = var.common_tags
+    distribution_id  = aws_cloudfront_distribution.distribution.id
+    distribution_arn = aws_cloudfront_distribution.distribution.arn
+    domain_name      = aws_cloudfront_distribution.distribution.domain_name
+    description      = var.distribution.description
+    common_tags      = var.common_tags
   }
 }
 

@@ -1,5 +1,71 @@
 # Terraform - AWS Web Module
 
+## Versión 3 (breaking change)
+
+La variable `distribution` se reestructuró:
+
+- Se eliminaron `default_cache_behavior_*` y `default_cache_behavior_function_associations`. La configuración del **default cache behavior** vive en `primary_s3_origin.cache_behavior` (si `primary_origin_type = "s3"`) o en `alb_origin.cache_behavior` (si `primary_origin_type = "alb"`).
+- Los **ordered cache behaviors** se definen en `ordered_cache_behaviors` (lista desacoplada de los orígenes), con `path_pattern`, `target_origin_id` y opciones de caché.
+- `additional_s3_origins` solo declara buckets (`bucket_name`, `origin_id` opcional).
+- Se eliminaron `lambda_association` y las variables raíz de compatibilidad (`s3_origin_*`, `alb_origin_*`, `distribution_*`, etc.).
+- **`origin_custom_headers`** se movió dentro de cada origen S3 (`primary_s3_origin.custom_headers` y `additional_s3_origins[].custom_headers`).
+
+### Migración rápida (v2 a v3)
+
+| v2 | v3 |
+| --- | --- |
+| `default_cache_behavior_compress` | `primary_s3_origin.cache_behavior.compress` o `alb_origin.cache_behavior.compress` |
+| `default_cache_behavior_min_ttl` / `default_ttl` / `max_ttl` | mismo campo dentro de `cache_behavior` del origen primario |
+| `default_cache_behavior_cache_policy_id` | `cache_behavior.cache_policy_id` (ID de policy administrada o vacío + TTLs para policy custom del módulo) |
+| `default_cache_behavior_function_associations` | `cache_behavior.function_associations` |
+| `additional_s3_origins[].path_pattern` + `cache_behavior` | `ordered_cache_behaviors[]` con `path_pattern`, `target_origin_id` y caché |
+| `lambda_association` | ítems en `ordered_cache_behaviors` con `lambda_function_associations` |
+| `origin_custom_headers` (global) | `primary_s3_origin.custom_headers` o `additional_s3_origins[].custom_headers` |
+
+### Ejemplo mínimo (S3 primario + staging por path)
+
+```hcl
+distribution = {
+  description         = "Mi app"
+  primary_origin_type = "s3"
+
+  primary_s3_origin = {
+    bucket_name = "mi-app-dev"
+    custom_headers = [
+      { name = "X-Origin-Secret", value = "secret-for-dev-bucket" }
+    ]
+    cache_behavior = {
+      viewer_protocol = "redirect-to-https"
+      cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # Managed-CachingDisabled (ejemplo)
+      min_ttl         = 0
+      default_ttl     = 0
+      max_ttl         = 0
+    }
+  }
+
+  additional_s3_origins = [
+    {
+      bucket_name = "mi-app-staging"
+      custom_headers = [
+        { name = "X-Origin-Secret", value = "secret-for-staging-bucket" }
+      ]
+    }
+  ]
+
+  ordered_cache_behaviors = [
+    {
+      path_pattern     = "/staging/*"
+      target_origin_id = "mi-app-staging"
+      viewer_protocol  = "redirect-to-https"
+      cache_policy_id  = "658327ea-f89d-47f2-9698-9013ddb722e4"
+      min_ttl          = 0
+      default_ttl      = 0
+      max_ttl          = 0
+    }
+  ]
+}
+```
+
 ## Uso
 
 ### Input
@@ -43,17 +109,12 @@
 
 #### primary_s3_origin
 
-| Campo        | Tipo              | Descripción                                                            | Requerido |
-| ------------ | ----------------- | ---------------------------------------------------------------------- | --------- |
-| bucket_name  | string            | Nombre del bucket S3                                                   | Si        |
-| path_pattern | optional(string)  | Patrón de ruta. Ver nota abajo sobre su uso                              | No        |
-| cache_behavior | optional(object) | Configuración del comportamiento de caché                              | No        |
-
-**Nota importante sobre `path_pattern` en `primary_s3_origin`:**
-
-- Cuando **`primary_origin_type = "s3"`**: El `path_pattern` **no se utiliza**. El tráfico "por defecto" (catch-all) va al bucket primario a través del `default_cache_behavior`, que no requiere path_pattern. Puedes omitir este campo o dejarlo en `null`.
-
-- Cuando **`primary_origin_type = "alb"`**: El `path_pattern` **sí se usa** para crear un `ordered_cache_behavior` que enruta tráfico específico (por ejemplo `/static/*` o `/app/*`) al bucket S3 primario, mientras que el resto va al ALB.
+| Campo          | Tipo                   | Descripción                                           | Requerido |
+| -------------- | ---------------------- | ----------------------------------------------------- | --------- |
+| bucket_name    | string                 | Nombre del bucket S3                                  | Si        |
+| origin_id      | optional(string)       | ID del origen. Por defecto: `bucket_name`             | No        |
+| custom_headers | optional(list(object)) | Headers fijos enviados al origen S3                   | No        |
+| cache_behavior | optional(object)       | Configuración del comportamiento de caché             | No        |
 
 #### primary_s3_origin.cache_behavior
 
@@ -67,20 +128,13 @@
 
 #### additional_s3_origins
 
-Lista de orígenes S3 adicionales. Cada bucket se registra como un **origen** en CloudFront, con comportamiento de caché según el caso:
+Lista de orígenes S3 adicionales. Cada bucket se registra como un **origen** en CloudFront. Los comportamientos de caché se definen en `ordered_cache_behaviors`.
 
-| Campo        | Tipo              | Descripción                                                                                 | Requerido |
-| ------------ | ----------------- | ------------------------------------------------------------------------------------------- | --------- |
-| bucket_name  | string            | Nombre del bucket S3                                                                        | Si        |
-| path_pattern | optional(string)  | Patrón de ruta. Solo se usa cuando ALB es primario (ver nota abajo)                        | No        |
-| origin_id    | optional(string)  | ID único del origen para CloudFront. Si no se especifica, se usa el `bucket_name`           | No        |
-| cache_behavior | optional(object) | Configuración del comportamiento de caché                                                   | No        |
-
-**Nota importante sobre el uso de `path_pattern` y `additional_s3_origins`:**
-
-- Cuando **`primary_origin_type = "alb"`**: Cada origen adicional se crea como `ordered_cache_behavior` con su `path_pattern` (ej: `/assets/*`, `/images/*`). El tráfico que coincida con ese patrón va al bucket correspondiente.
-
-- Cuando **`primary_origin_type = "s3"`**: Los orígenes adicionales se **registran como orígenes** en CloudFront, pero **no se crean comportamientos ordenados automáticamente**. Esto permite usar **CloudFront Functions (runtime 2.0)** para enrutamiento dinámico. Por ejemplo, puedes usar `cf.selectRequestOriginById()` en una función viewer-request para enrutar según el header `Host` (ej: `staging.dominio.com` vs `dev.dominio.com`) a diferentes buckets.
+| Campo          | Tipo                   | Descripción                                           | Requerido |
+| -------------- | ---------------------- | ----------------------------------------------------- | --------- |
+| bucket_name    | string                 | Nombre del bucket S3                                  | Si        |
+| origin_id      | optional(string)       | ID del origen. Por defecto: `bucket_name`             | No        |
+| custom_headers | optional(list(object)) | Headers fijos enviados a este origen S3               | No        |
 
 **Ejemplo de enrutamiento por dominio con CloudFront Function:**
 
@@ -181,6 +235,80 @@ Lista de asociaciones de CloudFront Functions al comportamiento de caché predet
 | event_type   | string | Tipo de evento. Valores permitidos: `viewer-request`, `viewer-response`                           | Sí        |
 
 **Nota:** Los eventos `origin-request` y `origin-response` son exclusivos de Lambda@Edge y no se pueden usar con CloudFront Functions.
+
+## FAQ con ejemplos
+
+### 1) "Si valido `header_behavior`, ¿pierdo custom headers?"
+
+No. Son conceptos distintos:
+
+- `header_behavior` (cache policy) controla **qué headers del request del viewer** entran al cache key / forwarding.
+- `custom_headers` dentro del origen S3 define **headers fijos** que CloudFront envía al origen.
+
+Por eso, validar valores permitidos para:
+
+- `viewer_protocol`: `allow-all`, `https-only`, `redirect-to-https`
+- `cookie_behavior`: `none`, `whitelist`, `allExcept`, `all`
+- `header_behavior`: `none`, `whitelist`
+- `query_string_behavior`: `none`, `whitelist`, `allExcept`, `all`
+
+no impide usar `custom_headers`.
+
+Ejemplo (custom headers fijos al origen):
+
+```hcl
+inputs = {
+  distribution = {
+    description         = "Ejemplo custom headers"
+    primary_origin_type = "s3"
+
+    primary_s3_origin = {
+      bucket_name = "mi-bucket-web"
+      # Estos headers SIEMPRE se envían al origen S3
+      custom_headers = [
+        { name = "X-App-Env", value = "staging" },
+        { name = "X-App-Client", value = "web" }
+      ]
+      cache_behavior = {
+        cache_policy_id = "<ID_MANAGED_CACHE_POLICY>"
+        min_ttl         = 0
+        default_ttl     = 0
+        max_ttl         = 0
+      }
+    }
+  }
+}
+```
+
+### 2) "¿Cómo uso una cache policy administrada por AWS (ej. CachingDisabled)?"
+
+En v3, pasa el ID en `cache_policy_id` dentro del `cache_behavior` del origen primario (o en cada ítem de `ordered_cache_behaviors`). No uses TTLs distintos de `0` si eliges una policy administrada (el módulo valida que no mezcles `cache_policy_id` con TTLs no nulos).
+
+Ejemplo (default con Managed-CachingDisabled):
+
+```hcl
+inputs = {
+  distribution = {
+    description         = "Ejemplo con managed cache policy"
+    primary_origin_type = "s3"
+
+    primary_s3_origin = {
+      bucket_name = "mi-bucket-web"
+      cache_behavior = {
+        cache_policy_id = "658327ea-f89d-47f2-9698-9013ddb722e4" # CachingDisabled (ejemplo)
+        min_ttl         = 0
+        default_ttl     = 0
+        max_ttl         = 0
+      }
+    }
+  }
+}
+```
+
+Notas:
+
+- Sustituye el ID por el de la policy administrada que corresponda (IDs fijos publicados por AWS).
+- Para un ordered behavior, usa el mismo campo `cache_policy_id` en ese ítem de `ordered_cache_behaviors`.
 
 ### Output
 

@@ -1,3 +1,22 @@
+locals {
+  all_s3_origins = concat(
+    var.distribution.primary_s3_origin != null ? [merge(var.distribution.primary_s3_origin, {
+      is_primary = true
+      origin_id  = coalesce(var.distribution.primary_s3_origin.origin_id, var.distribution.primary_s3_origin.bucket_name)
+    })] : [],
+    [for origin in var.distribution.additional_s3_origins : merge(origin, {
+      is_primary = false
+      origin_id  = coalesce(origin.origin_id, origin.bucket_name)
+    })]
+  )
+
+  s3_origins_map = { for origin in local.all_s3_origins : origin.origin_id => origin }
+
+  primary_s3_origin = var.distribution.primary_s3_origin != null ? local.s3_origins_map[coalesce(var.distribution.primary_s3_origin.origin_id, var.distribution.primary_s3_origin.bucket_name)] : null
+
+  primary_cache_behavior = var.distribution.primary_origin_type == "s3" ? var.distribution.primary_s3_origin.cache_behavior : var.distribution.alb_origin.cache_behavior
+}
+
 resource "aws_s3_bucket" "s3_origin" {
   for_each = local.s3_origins_map
   bucket   = each.value.bucket_name
@@ -24,47 +43,59 @@ resource "aws_s3_bucket_public_access_block" "s3_origin" {
 }
 
 resource "aws_cloudfront_cache_policy" "custom" {
-  count = var.distribution.default_cache_behavior_default_ttl != 0 || var.distribution.default_cache_behavior_max_ttl != 0 || var.distribution.default_cache_behavior_min_ttl != 0 ? 1 : 0
+  count = try(local.primary_cache_behavior.cache_policy_id, "") == "" && (
+    try(local.primary_cache_behavior.default_ttl, 0) != 0 ||
+    try(local.primary_cache_behavior.max_ttl, 0) != 0 ||
+    try(local.primary_cache_behavior.min_ttl, 0) != 0
+  ) ? 1 : 0
 
-  name        = local.primary_s3_origin != null ? "${local.primary_s3_origin.bucket_name}-cache-policy" : "custom-cache-policy"
-  default_ttl = var.distribution.default_cache_behavior_default_ttl
-  max_ttl     = var.distribution.default_cache_behavior_max_ttl
-  min_ttl     = var.distribution.default_cache_behavior_min_ttl
+  name        = local.primary_s3_origin != null ? "${local.primary_s3_origin.bucket_name}-cache-policy" : "${var.distribution.alb_origin.origin_id}-cache-policy"
+  default_ttl = try(local.primary_cache_behavior.default_ttl, 0)
+  max_ttl     = try(local.primary_cache_behavior.max_ttl, 0)
+  min_ttl     = try(local.primary_cache_behavior.min_ttl, 0)
 
   parameters_in_cache_key_and_forwarded_to_origin {
     cookies_config {
-      cookie_behavior = "none"
+      cookie_behavior = try(local.primary_cache_behavior.cache_policy_config.cookies_config.cookie_behavior, "none")
+      dynamic "cookies" {
+        for_each = length(try(local.primary_cache_behavior.cache_policy_config.cookies_config.cookies, [])) > 0 ? [1] : []
+        content {
+          items = try(local.primary_cache_behavior.cache_policy_config.cookies_config.cookies, [])
+        }
+      }
     }
     headers_config {
-      header_behavior = "none"
+      header_behavior = try(local.primary_cache_behavior.cache_policy_config.headers_config.header_behavior, "none")
+      dynamic "headers" {
+        for_each = length(try(local.primary_cache_behavior.cache_policy_config.headers_config.headers, [])) > 0 ? [1] : []
+        content {
+          items = try(local.primary_cache_behavior.cache_policy_config.headers_config.headers, [])
+        }
+      }
     }
     query_strings_config {
-      query_string_behavior = "none"
+      query_string_behavior = try(local.primary_cache_behavior.cache_policy_config.query_strings_config.query_string_behavior, "none")
+      dynamic "query_strings" {
+        for_each = length(try(local.primary_cache_behavior.cache_policy_config.query_strings_config.query_strings, [])) > 0 ? [1] : []
+        content {
+          items = try(local.primary_cache_behavior.cache_policy_config.query_strings_config.query_strings, [])
+        }
+      }
     }
   }
 }
 
 locals {
-  # Lista unificada de todos los orígenes S3 (primary + additional)
-  all_s3_origins = concat(
-    var.distribution.primary_s3_origin != null ? [merge(var.distribution.primary_s3_origin, { is_primary = true, origin_id = var.distribution.primary_s3_origin.bucket_name })] : [],
-    [for idx, origin in var.distribution.additional_s3_origins : merge(origin, { is_primary = false, origin_id = coalesce(origin.origin_id, origin.bucket_name) })]
+  default_cache_behavior_cache_policy_id = try(local.primary_cache_behavior.cache_policy_id, "") != "" ? try(local.primary_cache_behavior.cache_policy_id, "") : (
+    length(aws_cloudfront_cache_policy.custom) > 0 ? aws_cloudfront_cache_policy.custom[0].id : ""
   )
-
-  # Mapa de orígenes S3 indexados por origin_id para fácil acceso
-  s3_origins_map = { for origin in local.all_s3_origins : origin.origin_id => origin }
-
-  # Referencia al origen primario
-  primary_s3_origin = var.distribution.primary_s3_origin != null ? local.s3_origins_map[var.distribution.primary_s3_origin.bucket_name] : null
-
-  default_cache_behavior_cache_policy_id = var.distribution.default_cache_behavior_cache_policy_id != "" ? var.distribution.default_cache_behavior_cache_policy_id : length(aws_cloudfront_cache_policy.custom) > 0 ? aws_cloudfront_cache_policy.custom[0].id : ""
 }
 
 resource "aws_cloudfront_distribution" "distribution" {
   comment             = var.distribution.description
-  enabled             = try(var.distribution.cloudfront_settings.enabled, var.distribution_enabled)
-  default_root_object = try(var.distribution.cloudfront_settings.root_object, var.distribution_root_object)
-  aliases             = try(var.distribution.cloudfront_settings.aliases, var.distribution_aliases)
+  enabled             = try(var.distribution.cloudfront_settings.enabled, true)
+  default_root_object = try(var.distribution.cloudfront_settings.root_object, "index.html")
+  aliases             = try(var.distribution.cloudfront_settings.aliases, [])
   web_acl_id          = try(var.distribution.cloudfront_settings.web_acl_id, "") != "" ? try(var.distribution.cloudfront_settings.web_acl_id, "") : null
 
   dynamic "origin" {
@@ -74,7 +105,7 @@ resource "aws_cloudfront_distribution" "distribution" {
       origin_id                = origin.value.origin_id
       origin_access_control_id = aws_cloudfront_origin_access_control.s3_origin[origin.key].id
       dynamic "custom_header" {
-        for_each = var.origin_custom_headers
+        for_each = try(origin.value.custom_headers, [])
         content {
           name  = custom_header.value.name
           value = custom_header.value.value
@@ -90,56 +121,55 @@ resource "aws_cloudfront_distribution" "distribution" {
       origin_id   = origin.value.origin_id
       origin_path = origin.value.origin_path
       custom_origin_config {
-        http_port              = try(origin.value.origin_config.http_port, var.alb_origin_http_port)
-        https_port             = try(origin.value.origin_config.https_port, var.alb_origin_https_port)
-        origin_protocol_policy = try(origin.value.origin_config.protocol, var.alb_origin_protocol)
-        origin_ssl_protocols   = try(origin.value.origin_config.ssl_protocols, var.alb_origin_ssl_protocols)
+        http_port              = try(origin.value.origin_config.http_port, 80)
+        https_port             = try(origin.value.origin_config.https_port, 443)
+        origin_protocol_policy = try(origin.value.origin_config.protocol, "https-only")
+        origin_ssl_protocols   = try(origin.value.origin_config.ssl_protocols, ["TLSv1.2"])
       }
     }
   }
 
   dynamic "origin" {
-    for_each = var.distribution.api_gateway_origins != null ? var.distribution.api_gateway_origins : []
+    for_each = try(var.distribution.api_gateway_origins, [])
     content {
       domain_name = origin.value.domain_name
       origin_id   = origin.value.origin_id
       origin_path = origin.value.origin_path
       custom_origin_config {
-        http_port              = try(origin.value.origin_config.http_port, var.api_gateway_origin_http_port)
-        https_port             = try(origin.value.origin_config.https_port, var.api_gateway_origin_https_port)
-        origin_protocol_policy = try(origin.value.origin_config.protocol, var.api_gateway_origin_protocol)
-        origin_ssl_protocols   = try(origin.value.origin_config.ssl_protocols, var.api_gateway_origin_ssl_protocols)
+        http_port              = try(origin.value.origin_config.http_port, 80)
+        https_port             = try(origin.value.origin_config.https_port, 443)
+        origin_protocol_policy = try(origin.value.origin_config.protocol, "https-only")
+        origin_ssl_protocols   = try(origin.value.origin_config.ssl_protocols, ["TLSv1.2"])
       }
     }
   }
 
   default_cache_behavior {
-    allowed_methods  = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.allowed_methods, var.s3_origin_allowed_methods) : try(var.distribution.alb_origin.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
-    cached_methods   = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.cached_methods, var.s3_origin_cached_methods) : try(var.distribution.alb_origin.cache_behavior.cached_methods, var.alb_origin_cached_methods)
+    allowed_methods  = try(local.primary_cache_behavior.allowed_methods, var.distribution.primary_origin_type == "s3" ? ["GET", "HEAD"] : ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"])
+    cached_methods   = try(local.primary_cache_behavior.cached_methods, ["GET", "HEAD"])
     target_origin_id = var.distribution.primary_origin_type == "s3" ? local.primary_s3_origin.origin_id : var.distribution.alb_origin.origin_id
 
     dynamic "forwarded_values" {
       for_each = local.default_cache_behavior_cache_policy_id == "" ? [1] : []
       content {
-        query_string = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.query_string, var.s3_origin_query_string) : try(var.distribution.alb_origin.cache_behavior.query_string, var.alb_origin_query_string)
+        query_string = var.distribution.primary_origin_type == "s3" ? try(local.primary_cache_behavior.query_string, false) : try(local.primary_cache_behavior.query_string, true)
         headers      = var.distribution.primary_origin_type == "alb" ? ["*"] : null
         cookies {
-          forward = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.cookies, var.s3_origin_cookies) : "all"
+          forward = var.distribution.primary_origin_type == "s3" ? try(local.primary_cache_behavior.cookies_forward, "none") : try(local.primary_cache_behavior.cookies_forward, "all")
         }
       }
     }
 
-    compress        = var.distribution.default_cache_behavior_compress
+    compress        = try(local.primary_cache_behavior.compress, false)
     cache_policy_id = local.default_cache_behavior_cache_policy_id != "" ? local.default_cache_behavior_cache_policy_id : null
-    min_ttl         = var.distribution.default_cache_behavior_min_ttl
-    default_ttl     = var.distribution.default_cache_behavior_default_ttl
-    max_ttl         = var.distribution.default_cache_behavior_max_ttl
+    min_ttl         = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.min_ttl, 0) : 0
+    default_ttl     = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.default_ttl, 0) : 0
+    max_ttl         = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.max_ttl, 0) : 0
 
-    viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(var.distribution.primary_s3_origin.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol) : try(var.distribution.alb_origin.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
+    viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(local.primary_cache_behavior.viewer_protocol, "redirect-to-https") : try(local.primary_cache_behavior.viewer_protocol, "https-only")
 
-    # Asociaciones de CloudFront Functions
     dynamic "function_association" {
-      for_each = var.distribution.default_cache_behavior_function_associations
+      for_each = try(local.primary_cache_behavior.function_associations, [])
       content {
         function_arn = function_association.value.function_arn
         event_type   = function_association.value.event_type
@@ -147,130 +177,62 @@ resource "aws_cloudfront_distribution" "distribution" {
     }
   }
 
-  # Orígenes S3 adicionales (solo cuando tienen path_pattern definido)
   dynamic "ordered_cache_behavior" {
-    for_each = [for origin in var.distribution.additional_s3_origins : origin if origin.path_pattern != null]
+    for_each = var.distribution.ordered_cache_behaviors
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
-      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
-      target_origin_id = coalesce(ordered_cache_behavior.value.origin_id, ordered_cache_behavior.value.bucket_name)
-      forwarded_values {
-        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
-        cookies {
-          forward = try(ordered_cache_behavior.value.cache_behavior.cookies, var.s3_origin_cookies)
+      allowed_methods  = try(ordered_cache_behavior.value.allowed_methods, ["GET", "HEAD"])
+      cached_methods   = try(ordered_cache_behavior.value.cached_methods, ["GET", "HEAD"])
+      target_origin_id = ordered_cache_behavior.value.target_origin_id
+      compress         = try(ordered_cache_behavior.value.compress, false)
+
+      dynamic "forwarded_values" {
+        for_each = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? [1] : []
+        content {
+          query_string = try(ordered_cache_behavior.value.forwarded_values.query_string, false)
+          headers      = length(try(ordered_cache_behavior.value.forwarded_values.headers, [])) > 0 ? ordered_cache_behavior.value.forwarded_values.headers : null
+          cookies {
+            forward           = try(ordered_cache_behavior.value.forwarded_values.cookies, "none")
+            whitelisted_names = try(ordered_cache_behavior.value.forwarded_values.whitelisted_cookies, [])
+          }
         }
       }
-      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol)
+
+      cache_policy_id = try(ordered_cache_behavior.value.cache_policy_id, "") != "" ? ordered_cache_behavior.value.cache_policy_id : null
+      min_ttl         = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.min_ttl, 0) : 0
+      default_ttl     = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.default_ttl, 0) : 0
+      max_ttl         = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.max_ttl, 0) : 0
+
+      viewer_protocol_policy = try(ordered_cache_behavior.value.viewer_protocol, "redirect-to-https")
+
+      dynamic "function_association" {
+        for_each = try(ordered_cache_behavior.value.function_associations, [])
+        content {
+          function_arn = function_association.value.function_arn
+          event_type   = function_association.value.event_type
+        }
+      }
+
+      dynamic "lambda_function_association" {
+        for_each = try(ordered_cache_behavior.value.lambda_function_associations, [])
+        content {
+          event_type = lambda_function_association.value.event_type
+          lambda_arn = "${lambda_function_association.value.lambda_arn}:${lambda_function_association.value.lambda_version}"
+        }
+      }
     }
   }
 
-  # Primary S3 origin como ordered_cache_behavior cuando ALB es primario (si tiene path_pattern)
-  dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "alb" && var.distribution.primary_s3_origin != null && var.distribution.primary_s3_origin.path_pattern != null ? [var.distribution.primary_s3_origin] : []
-    content {
-      path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
-      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
-      target_origin_id = local.primary_s3_origin.origin_id
-      forwarded_values {
-        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
-        cookies {
-          forward = try(ordered_cache_behavior.value.cache_behavior.cookies, var.s3_origin_cookies)
-        }
-      }
-      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol)
-    }
-  }
-
-  # Primary S3 origin como ordered_cache_behavior cuando S3 es primario (si tiene path_pattern)
-  dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "s3" && var.distribution.primary_s3_origin != null && var.distribution.primary_s3_origin.path_pattern != null ? [var.distribution.primary_s3_origin] : []
-    content {
-      path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
-      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.s3_origin_cached_methods)
-      target_origin_id = local.primary_s3_origin.origin_id
-      forwarded_values {
-        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.s3_origin_query_string)
-        cookies {
-          forward = try(ordered_cache_behavior.value.cache_behavior.cookies, var.s3_origin_cookies)
-        }
-      }
-      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.s3_origin_viewer_protocol)
-    }
-  }
-
-  dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.primary_origin_type == "s3" && var.distribution.alb_origin != null ? [var.distribution.alb_origin] : []
-    content {
-      path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.alb_origin_allowed_methods)
-      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.alb_origin_cached_methods)
-      target_origin_id = ordered_cache_behavior.value.origin_id
-      forwarded_values {
-        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.alb_origin_query_string)
-        headers      = ["*"]
-        cookies {
-          forward = "all"
-        }
-      }
-      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.alb_origin_viewer_protocol)
-    }
-  }
-
-  dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.lambda_association != null ? var.distribution.lambda_association : []
-    content {
-      path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = ordered_cache_behavior.value.allowed_methods
-      cached_methods   = ordered_cache_behavior.value.cached_methods
-      target_origin_id = var.distribution.primary_origin_type == "s3" ? local.primary_s3_origin.origin_id : var.distribution.alb_origin.origin_id
-      forwarded_values {
-        query_string = ordered_cache_behavior.value.query_string
-        headers      = ordered_cache_behavior.value.headers
-        cookies {
-          forward           = ordered_cache_behavior.value.cookies != null ? "whitelist" : "none"
-          whitelisted_names = ordered_cache_behavior.value.cookies
-        }
-      }
-      lambda_function_association {
-        event_type = ordered_cache_behavior.value.event_type
-        lambda_arn = "${ordered_cache_behavior.value.lambda_arn}:${ordered_cache_behavior.value.lambda_version}"
-      }
-      viewer_protocol_policy = ordered_cache_behavior.value.viewer_protocol_policy
-    }
-  }
-
-  dynamic "ordered_cache_behavior" {
-    for_each = var.distribution.api_gateway_origins != null ? var.distribution.api_gateway_origins : []
-    content {
-      path_pattern     = ordered_cache_behavior.value.path_pattern
-      allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.api_gateway_origin_allowed_methods)
-      cached_methods   = try(ordered_cache_behavior.value.cache_behavior.cached_methods, var.api_gateway_origin_cached_methods)
-      target_origin_id = ordered_cache_behavior.value.origin_id
-      forwarded_values {
-        query_string = try(ordered_cache_behavior.value.cache_behavior.query_string, var.api_gateway_origin_query_string)
-        headers      = ordered_cache_behavior.value.headers
-        cookies {
-          forward           = length(ordered_cache_behavior.value.cookies) > 0 ? "whitelist" : "none"
-          whitelisted_names = ordered_cache_behavior.value.cookies
-        }
-      }
-      viewer_protocol_policy = try(ordered_cache_behavior.value.cache_behavior.viewer_protocol, var.api_gateway_origin_viewer_protocol)
-    }
-  }
-
-  price_class = try(var.distribution.cloudfront_settings.price_class, var.distribution_price_class)
+  price_class = try(var.distribution.cloudfront_settings.price_class, "PriceClass_200")
 
   restrictions {
     geo_restriction {
-      restriction_type = try(var.distribution.cloudfront_settings.restriction, var.distribution_restriction)
+      restriction_type = try(var.distribution.cloudfront_settings.restriction, "none")
     }
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = try(var.distribution.cloudfront_settings.certificate, var.distribution_certificate)
+    cloudfront_default_certificate = try(var.distribution.cloudfront_settings.certificate, true)
   }
 
   dynamic "custom_error_response" {
@@ -285,7 +247,6 @@ resource "aws_cloudfront_distribution" "distribution" {
 
   tags = var.common_tags
 }
-
 
 resource "aws_s3_bucket_policy" "s3_origin" {
   for_each = local.s3_origins_map
