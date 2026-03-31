@@ -147,9 +147,9 @@ resource "aws_cloudfront_distribution" "distribution" {
     }
   }
 
-  # Orígenes S3 adicionales
+  # Orígenes S3 adicionales (solo cuando tienen path_pattern definido)
   dynamic "ordered_cache_behavior" {
-    for_each = length(var.distribution.additional_s3_origins) > 0 ? var.distribution.additional_s3_origins : []
+    for_each = [for origin in var.distribution.additional_s3_origins : origin if origin.path_pattern != null]
     content {
       path_pattern     = ordered_cache_behavior.value.path_pattern
       allowed_methods  = try(ordered_cache_behavior.value.cache_behavior.allowed_methods, var.s3_origin_allowed_methods)
