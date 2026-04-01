@@ -105,6 +105,8 @@ distribution = {
 | price_class  | optional(string)    | Clase de precio. Por defecto: "PriceClass_200"      | No        |
 | restriction  | optional(string)    | Restricción geográfica. Por defecto: "none"         | No        |
 | certificate  | optional(bool)      | Usar certificado SSL/TLS. Por defecto: true         | No        |
+| acm_certificate_arn | optional(string) | ARN del certificado ACM (debe estar en `us-east-1`). Por defecto: `""` | No        |
+| minimum_protocol_version | optional(string) | Versión mínima TLS cuando se usa ACM. Por defecto: `TLSv1.2_2021` | No        |
 | web_acl_id   | optional(string)    | ARN/ID del Web ACL de AWS WAF para asociar a CloudFront. Por defecto: "" (se usa `null`) | No        |
 
 #### primary_s3_origin

@@ -232,7 +232,10 @@ resource "aws_cloudfront_distribution" "distribution" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = try(var.distribution.cloudfront_settings.certificate, true)
+    cloudfront_default_certificate = try(var.distribution.cloudfront_settings.acm_certificate_arn, "") == ""
+    acm_certificate_arn            = try(var.distribution.cloudfront_settings.acm_certificate_arn, "") != "" ? var.distribution.cloudfront_settings.acm_certificate_arn : null
+    ssl_support_method             = try(var.distribution.cloudfront_settings.acm_certificate_arn, "") != "" ? "sni-only" : null
+    minimum_protocol_version       = try(var.distribution.cloudfront_settings.acm_certificate_arn, "") != "" ? try(var.distribution.cloudfront_settings.minimum_protocol_version, "TLSv1.2_2021") : "TLSv1"
   }
 
   dynamic "custom_error_response" {

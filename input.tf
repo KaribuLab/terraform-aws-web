@@ -26,6 +26,8 @@ variable "distribution" {
       price_class = optional(string, "PriceClass_200")
       restriction = optional(string, "none")
       certificate = optional(bool, true)
+      acm_certificate_arn      = optional(string, "")
+      minimum_protocol_version   = optional(string, "TLSv1.2_2021")
       web_acl_id  = optional(string, "")
     }), {})
 
