@@ -162,9 +162,10 @@ resource "aws_cloudfront_distribution" "distribution" {
 
     compress        = try(local.primary_cache_behavior.compress, false)
     cache_policy_id = local.default_cache_behavior_cache_policy_id != "" ? local.default_cache_behavior_cache_policy_id : null
-    min_ttl         = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.min_ttl, 0) : 0
-    default_ttl     = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.default_ttl, 0) : 0
-    max_ttl         = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.max_ttl, 0) : 0
+    # Con cache policy, los TTL deben omitirse. 0 se envía a la API y CloudFront exige ForwardedValues.
+    min_ttl     = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.min_ttl, 0) : null
+    default_ttl = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.default_ttl, 0) : null
+    max_ttl     = local.default_cache_behavior_cache_policy_id == "" ? try(local.primary_cache_behavior.max_ttl, 0) : null
 
     viewer_protocol_policy = var.distribution.primary_origin_type == "s3" ? try(local.primary_cache_behavior.viewer_protocol, "redirect-to-https") : try(local.primary_cache_behavior.viewer_protocol, "https-only")
 
@@ -199,9 +200,9 @@ resource "aws_cloudfront_distribution" "distribution" {
       }
 
       cache_policy_id = try(ordered_cache_behavior.value.cache_policy_id, "") != "" ? ordered_cache_behavior.value.cache_policy_id : null
-      min_ttl         = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.min_ttl, 0) : 0
-      default_ttl     = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.default_ttl, 0) : 0
-      max_ttl         = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.max_ttl, 0) : 0
+      min_ttl         = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.min_ttl, 0) : null
+      default_ttl     = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.default_ttl, 0) : null
+      max_ttl         = try(ordered_cache_behavior.value.cache_policy_id, "") == "" ? try(ordered_cache_behavior.value.max_ttl, 0) : null
 
       viewer_protocol_policy = try(ordered_cache_behavior.value.viewer_protocol, "redirect-to-https")
 
